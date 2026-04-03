@@ -1,0 +1,8 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/meridian" },
+    { "path": "./packages/compiler" },
+    { "path": "./packages/cli" }
+  ]
+}

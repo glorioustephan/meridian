@@ -1,0 +1,18 @@
+{
+  "name": "@meridian/cli",
+  "version": "0.0.0",
+  "type": "module",
+  "bin": {
+    "meridian": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@meridian/compiler": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}

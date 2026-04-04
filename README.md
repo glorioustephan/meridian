@@ -1,6 +1,6 @@
 # Meridian
 
-Meridian is a draft, class-first authoring layer for React. The current repo state is architecture-only.
+Meridian is an active prototype for a class-first authoring layer for React.
 
 The active design document is [rfc.md](./rfc.md). It narrows Meridian v1 to a technically defensible scope:
 

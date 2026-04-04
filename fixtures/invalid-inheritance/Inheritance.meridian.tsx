@@ -1,5 +1,5 @@
 'use client';
-import { Component } from '@meridian/meridian';
+import { Component } from 'meridian';
 
 class Base extends Component {
   render() { return null; }

@@ -1,5 +1,5 @@
 'use client';
-import { Primitive, state, effect } from '@meridian/meridian';
+import { Primitive, state, effect } from 'meridian';
 
 export class Debounce extends Primitive<string> {
   constructor(private value: string, private delay: number) {

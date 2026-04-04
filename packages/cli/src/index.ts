@@ -37,9 +37,9 @@ OPTIONS
 }
 
 const config = resolveConfig({
-  cwd: values['cwd'],
-  inputDir: values['input-dir'],
-  outDir: values['out-dir'],
+  ...(values['cwd'] ? { cwd: values['cwd'] } : {}),
+  ...(values['input-dir'] ? { inputDir: values['input-dir'] } : {}),
+  ...(values['out-dir'] ? { outDir: values['out-dir'] } : {}),
 });
 
 if (command === 'build' || (!command && !values['watch'])) {

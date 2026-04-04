@@ -1,5 +1,13 @@
-import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, copyFileSync } from 'node:fs';
-import { join, relative, dirname, extname, basename } from 'node:path';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
+import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { compileModule } from '@meridian/compiler';
 import type { MeridianConfig } from './config.js';
 
@@ -10,77 +18,102 @@ export interface BuildResult {
   warnings: number;
 }
 
-function collectFiles(dir: string): string[] {
+function isExcludedDir(pathName: string, config: MeridianConfig): boolean {
+  const base = basename(pathName);
+  if (config.excludeDirs.includes(base)) {
+    return true;
+  }
+
+  const resolved = resolve(pathName);
+  return resolved === config.outDir || resolved.startsWith(`${config.outDir}/`);
+}
+
+function collectFiles(dir: string, config: MeridianConfig): string[] {
+  if (!existsSync(dir) || isExcludedDir(dir, config)) {
+    return [];
+  }
+
   const entries = readdirSync(dir);
   const files: string[] = [];
+
   for (const entry of entries) {
-    const full = join(dir, entry);
-    const stat = statSync(full);
+    const fullPath = join(dir, entry);
+    const stat = statSync(fullPath);
+
     if (stat.isDirectory()) {
-      files.push(...collectFiles(full));
-    } else {
-      files.push(full);
+      if (!isExcludedDir(fullPath, config)) {
+        files.push(...collectFiles(fullPath, config));
+      }
+      continue;
     }
+
+    files.push(fullPath);
   }
+
   return files;
 }
 
 function isMeridianSource(source: string): boolean {
-  return (
-    source.includes("'@meridian/meridian'") ||
-    source.includes('"@meridian/meridian"')
-  );
+  return /\bfrom\s+['"]meridian['"]/.test(source);
+}
+
+function shouldCompile(filePath: string, config: MeridianConfig): boolean {
+  const extension = extname(filePath).slice(1);
+  return config.extensions.includes(extension as 'ts' | 'tsx');
+}
+
+function shouldCopy(filePath: string, config: MeridianConfig): boolean {
+  if (!config.copyFiles) {
+    return false;
+  }
+
+  const extension = extname(filePath).slice(1);
+  return !config.extensions.includes(extension as 'ts' | 'tsx');
 }
 
 export async function build(config: MeridianConfig): Promise<BuildResult> {
   const result: BuildResult = { compiled: 0, copied: 0, errors: 0, warnings: 0 };
-
-  const files = collectFiles(config.inputDir);
+  const files = collectFiles(config.inputDir, config);
 
   for (const filePath of files) {
-    const ext = extname(filePath);
     const rel = relative(config.inputDir, filePath);
 
-    const isMeridianExt =
-      (ext === '.ts' || ext === '.tsx') &&
-      config.extensions.includes(ext.slice(1) as 'ts' | 'tsx');
-
-    if (isMeridianExt) {
+    if (shouldCompile(filePath, config)) {
       const source = readFileSync(filePath, 'utf-8');
-
-      if (isMeridianSource(source)) {
-        const compileResult = compileModule(source, filePath);
-
-        const fileErrors = compileResult.diagnostics.filter((d) => d.severity === 'error');
-        const fileWarnings = compileResult.diagnostics.filter((d) => d.severity === 'warning');
-
-        result.warnings += fileWarnings.length;
-
-        if (fileErrors.length > 0) {
-          result.errors += fileErrors.length;
-          for (const diag of fileErrors) {
-            process.stderr.write(
-              `${diag.file}:${diag.line}:${diag.column}: error ${diag.code}: ${diag.message}\n`,
-            );
-          }
-        } else if (compileResult.output !== undefined) {
-          const outRelBase = basename(rel, ext);
-          const outRel = join(dirname(rel), `${outRelBase}.tsx`);
-          const outPath = join(config.outDir, outRel);
-          mkdirSync(dirname(outPath), { recursive: true });
-          writeFileSync(outPath, compileResult.output, 'utf-8');
-          result.compiled += 1;
-        }
-
+      if (!isMeridianSource(source)) {
         continue;
       }
+
+      const compileResult = compileModule(source, filePath);
+      const fileErrors = compileResult.diagnostics.filter((diag) => diag.severity === 'error');
+      const fileWarnings = compileResult.diagnostics.filter((diag) => diag.severity === 'warning');
+
+      result.warnings += fileWarnings.length;
+
+      if (fileErrors.length > 0 || compileResult.output === undefined) {
+        result.errors += fileErrors.length || 1;
+        for (const diagnostic of fileErrors) {
+          process.stderr.write(
+            `${diagnostic.file}:${diagnostic.line}:${diagnostic.column}: error ${diagnostic.code}: ${diagnostic.message}\n`,
+          );
+        }
+        continue;
+      }
+
+      const extension = extname(filePath);
+      const outPath = join(config.outDir, dirname(rel), `${basename(rel, extension)}.tsx`);
+      mkdirSync(dirname(outPath), { recursive: true });
+      writeFileSync(outPath, compileResult.output, 'utf-8');
+      result.compiled += 1;
+      continue;
     }
 
-    // Copy all other files through unchanged
-    const outPath = join(config.outDir, rel);
-    mkdirSync(dirname(outPath), { recursive: true });
-    copyFileSync(filePath, outPath);
-    result.copied += 1;
+    if (shouldCopy(filePath, config)) {
+      const outPath = join(config.outDir, rel);
+      mkdirSync(dirname(outPath), { recursive: true });
+      copyFileSync(filePath, outPath);
+      result.copied += 1;
+    }
   }
 
   console.log(

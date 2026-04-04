@@ -1,0 +1,8 @@
+{
+  "name": "meridian-next-app-router-fixture",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:meridian": "node ../../packages/cli/dist/index.js build --cwd ."
+  }
+}

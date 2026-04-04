@@ -1,72 +1,45 @@
-import * as babelParser from '@babel/parser';
 import * as t from '@babel/types';
-import * as _generatorModule from '@babel/generator';
+import { generateCode, parseTypeScriptModule, typeAnnotationText } from '../ast.js';
 import type {
-  MeridianModuleIR,
-  MeridianDeclarationIR,
-  FieldIR,
-  GetterIR,
-  MethodIR,
-  RenderIR,
-  ResolveIR,
   ConstructorIR,
   ConstructorParamIR,
+  FieldIR,
+  GetterIR,
   ImportIR,
-  DependencyRef,
+  LocalClassIR,
+  MeridianDeclarationIR,
+  MeridianModuleIR,
+  MethodIR,
+  MethodParamIR,
+  NamedImportBindingIR,
+  RenderIR,
+  ResolveIR,
   SourceLocationIR,
-  MeridianDiagnostic,
+  UseTargetIR,
 } from '../ir.js';
-import { makeDiagnostic } from '../diagnostics.js';
+import { validateModule } from '../validate.js';
 
-// ESM compat shim: @babel/generator ships CJS with `exports.default = generate`.
-// With esModuleInterop:false the namespace import gives us the module object.
-// At runtime `_generatorModule.default` is the callable generate function.
-type GenerateFn = (ast: t.Node, opts?: Record<string, unknown>) => { code: string };
-const generate: GenerateFn =
-  ((_generatorModule as unknown as { default?: GenerateFn }).default ?? _generatorModule) as GenerateFn;
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+interface RawClassRecord {
+  name: string;
+  superClassName?: string | undefined;
+  exportDefault: boolean;
+  node: t.ClassDeclaration;
+}
 
 function loc(node: t.Node): SourceLocationIR {
-  return { line: node.loc?.start.line ?? 0, column: node.loc?.start.column ?? 0 };
+  return {
+    line: node.loc?.start.line ?? 0,
+    column: node.loc?.start.column ?? 0,
+  };
 }
 
-function bodyText(node: t.Node): string {
-  return generate(node as Parameters<typeof generate>[0]).code;
-}
-
-/**
- * Extract a readable type string from a TSTypeAnnotation wrapper node or a
- * raw TS type node. Babel stores type annotations as a `TSTypeAnnotation`
- * wrapper whose `.typeAnnotation` property holds the actual type AST node.
- * `@babel/generator` crashes if given the wrapper directly, so we unwrap it.
- */
-function typeAnnotationText(
-  node: t.TSTypeAnnotation | t.TypeAnnotation | t.Noop | null | undefined,
-): string | undefined {
-  if (!node) return undefined;
-  if (t.isTSTypeAnnotation(node)) {
-    return bodyText(node.typeAnnotation);
-  }
-  // t.TypeAnnotation (Flow) — generate it as-is; unlikely in TS-only files
-  return bodyText(node);
-}
-
-/**
- * Resolve a decorator to its canonical name for classification purposes.
- * Returns one of: 'state' | 'ref' | 'effect' | 'effect.layout' | 'use' | <unknown string>
- */
 function decoratorName(decorator: t.Decorator): string {
   const expr = decorator.expression;
 
-  // @state, @ref, @effect — bare identifiers
   if (t.isIdentifier(expr)) {
     return expr.name;
   }
 
-  // @effect.layout — MemberExpression
   if (
     t.isMemberExpression(expr) &&
     t.isIdentifier(expr.object) &&
@@ -76,512 +49,451 @@ function decoratorName(decorator: t.Decorator): string {
     return `${expr.object.name}.${expr.property.name}`;
   }
 
-  // @use(Primitive, factory) — CallExpression
   if (t.isCallExpression(expr)) {
-    const callee = expr.callee;
-    if (t.isIdentifier(callee)) {
-      return callee.name;
+    if (t.isIdentifier(expr.callee)) {
+      return expr.callee.name;
     }
-    // @effect.layout() as a call (unlikely but defensive)
-    if (t.isMemberExpression(callee) && t.isIdentifier(callee.object) && t.isIdentifier(callee.property)) {
-      return `${callee.object.name}.${callee.property.name}`;
-    }
-  }
 
-  return '<unknown>';
-}
-
-const SUPPORTED_DECORATORS = new Set(['state', 'ref', 'effect', 'effect.layout', 'use']);
-
-/**
- * Scan a node for `this.xxx` member expressions and classify them against
- * known sets of state fields and getter names. Props classification is
- * best-effort (can't be resolved without the type system in Phase 2).
- *
- * Uses `t.traverseFast` which works on any node type without requiring a
- * scope or parentPath — unlike `@babel/traverse` which requires a File/Program.
- */
-function inferDependencies(
-  node: t.Node,
-  stateNames: ReadonlySet<string>,
-  getterNames: ReadonlySet<string>,
-): DependencyRef[] {
-  const deps: DependencyRef[] = [];
-  const seen = new Set<string>();
-
-  t.traverseFast(node, (child) => {
-    if (!t.isMemberExpression(child)) return;
-
-    const { object, property, computed } = child;
-    if (!t.isThisExpression(object)) return;
-
-    // Dynamic access: this[expr] — skip
-    if (computed) return;
-
-    if (!t.isIdentifier(property)) return;
-
-    const name = property.name;
-    if (seen.has(name)) return;
-    seen.add(name);
-
-    if (stateNames.has(name)) {
-      deps.push({ source: 'state', name });
-    } else if (getterNames.has(name)) {
-      deps.push({ source: 'getter', name });
-    }
-    // Otherwise it could be a prop or method call — omit for now; Phase 4 handles full inference
-  });
-
-  return deps;
-}
-
-/**
- * Extract the superclass identifier name from a class declaration's superClass.
- * Handles plain `Identifier` and `TSAsExpression`-wrapped identifiers.
- */
-function superClassName(superClass: t.Expression | null | undefined): string | null {
-  if (!superClass) return null;
-  if (t.isIdentifier(superClass)) return superClass.name;
-  return null;
-}
-
-/**
- * Resolve the `propsType` string from the first type parameter of a superclass
- * e.g. `extends Component<{ initial: number }>` → `{ initial: number }`
- */
-function extractPropsType(
-  superTypeParameters: t.TSTypeParameterInstantiation | undefined | null,
-): string | undefined {
-  if (!superTypeParameters) return undefined;
-  const first = superTypeParameters.params[0];
-  if (!first) return undefined;
-  return bodyText(first);
-}
-
-/**
- * Extract the `UseTargetIR` from a `@use(Primitive, factory)` decorator.
- */
-function extractUseTarget(
-  decorator: t.Decorator,
-): { primitiveName: string; argsFactoryBody: string } | null {
-  const expr = decorator.expression;
-  if (!t.isCallExpression(expr)) return null;
-
-  const [firstArg, secondArg] = expr.arguments;
-  if (!firstArg) return null;
-
-  const primitiveName = t.isIdentifier(firstArg)
-    ? firstArg.name
-    : bodyText(firstArg);
-
-  const argsFactoryBody = secondArg ? bodyText(secondArg) : '() => []';
-
-  return { primitiveName, argsFactoryBody };
-}
-
-// ---------------------------------------------------------------------------
-// Main export
-// ---------------------------------------------------------------------------
-
-export function parseModule(source: string, filePath: string): MeridianModuleIR {
-  const diagnostics: MeridianDiagnostic[] = [];
-
-  // -------------------------------------------------------------------------
-  // Parse
-  // -------------------------------------------------------------------------
-  const ast = babelParser.parse(source, {
-    sourceType: 'module',
-    plugins: ['typescript', 'jsx', 'decorators-legacy'],
-    attachComment: true,
-  });
-
-  // -------------------------------------------------------------------------
-  // Detect 'use client' directive
-  // -------------------------------------------------------------------------
-  let clientDirective = false;
-
-  // Babel captures `'use client'` either as a Directive node on the Program
-  // or (less commonly) as the first ExpressionStatement with a StringLiteral.
-  const programDirectives = ast.program.directives ?? [];
-  if (programDirectives.some((d) => d.value.value === 'use client')) {
-    clientDirective = true;
-  }
-
-  if (!clientDirective) {
-    // Check first expression statement
-    const firstStmt = ast.program.body[0];
     if (
-      firstStmt &&
-      t.isExpressionStatement(firstStmt) &&
-      t.isStringLiteral(firstStmt.expression) &&
-      firstStmt.expression.value === 'use client'
+      t.isMemberExpression(expr.callee) &&
+      t.isIdentifier(expr.callee.object) &&
+      t.isIdentifier(expr.callee.property) &&
+      !expr.callee.computed
     ) {
-      clientDirective = true;
+      return `${expr.callee.object.name}.${expr.callee.property.name}`;
     }
   }
 
-  // -------------------------------------------------------------------------
-  // Collect imports
-  // -------------------------------------------------------------------------
+  return generateCode(expr);
+}
+
+function superClassName(superClass: t.Expression | null | undefined): string | undefined {
+  if (!superClass) {
+    return undefined;
+  }
+
+  if (t.isIdentifier(superClass)) {
+    return superClass.name;
+  }
+
+  return generateCode(superClass);
+}
+
+function extractPropsType(
+  classNode: t.ClassDeclaration,
+): string | undefined {
+  const withTypeParams = classNode as t.ClassDeclaration & {
+    superTypeParameters?: t.TSTypeParameterInstantiation;
+  };
+
+  const first = withTypeParams.superTypeParameters?.params[0];
+  return first ? generateCode(first) : undefined;
+}
+
+function extractNamedImport(specifier: t.ImportSpecifier): NamedImportBindingIR {
+  if (t.isIdentifier(specifier.imported)) {
+    return { imported: specifier.imported.name, local: specifier.local.name };
+  }
+
+  return { imported: specifier.imported.value, local: specifier.local.name };
+}
+
+function extractFunctionParam(
+  param: t.Function['params'][number],
+): ConstructorParamIR | MethodParamIR {
+  if (t.isIdentifier(param)) {
+    const type = typeAnnotationText(param.typeAnnotation);
+    return {
+      name: param.name,
+      optional: Boolean(param.optional),
+      ...(type ? { type } : {}),
+      node: param,
+    };
+  }
+
+  if (t.isAssignmentPattern(param) && t.isIdentifier(param.left)) {
+    const type = typeAnnotationText(param.left.typeAnnotation);
+    return {
+      name: param.left.name,
+      optional: true,
+      ...(type ? { type } : {}),
+      node: param,
+    };
+  }
+
+  if (t.isRestElement(param) && t.isIdentifier(param.argument)) {
+    return {
+      name: param.argument.name,
+      optional: false,
+      node: param,
+    };
+  }
+
+  if (t.isTSParameterProperty(param)) {
+    if (t.isIdentifier(param.parameter)) {
+      const type = typeAnnotationText(param.parameter.typeAnnotation);
+      return {
+        name: param.parameter.name,
+        optional: Boolean(param.parameter.optional),
+        ...(type ? { type } : {}),
+        node: param,
+      };
+    }
+
+    if (t.isAssignmentPattern(param.parameter) && t.isIdentifier(param.parameter.left)) {
+      const type = typeAnnotationText(param.parameter.left.typeAnnotation);
+      return {
+        name: param.parameter.left.name,
+        optional: true,
+        ...(type ? { type } : {}),
+        node: param,
+      };
+    }
+  }
+
+  return {
+    name: generateCode(param),
+    optional: false,
+    node: param,
+  };
+}
+
+function extractUseTarget(decorator: t.Decorator): UseTargetIR | undefined {
+  if (!t.isCallExpression(decorator.expression)) {
+    return undefined;
+  }
+
+  const [primitiveArg, argsFactory] = decorator.expression.arguments;
+  if (!primitiveArg || !argsFactory || !t.isExpression(argsFactory)) {
+    return undefined;
+  }
+
+  return {
+    primitiveName: t.isIdentifier(primitiveArg)
+      ? primitiveArg.name
+      : generateCode(primitiveArg),
+    argsFactory,
+  };
+}
+
+function isMeridianCandidate(
+  record: RawClassRecord,
+  classMap: Map<string, RawClassRecord>,
+): boolean {
+  const seen = new Set<string>();
+  let current: string | undefined = record.name;
+
+  while (current) {
+    if (current === 'Component' || current === 'Primitive' || current === 'ServerComponent') {
+      return true;
+    }
+
+    if (seen.has(current)) {
+      return false;
+    }
+    seen.add(current);
+
+    const next: string | undefined = classMap.get(current)?.superClassName;
+    current = next;
+  }
+
+  return false;
+}
+
+function extractField(
+  member: t.ClassProperty | t.ClassPrivateProperty,
+): FieldIR | undefined {
+  const decorators = member.decorators ?? [];
+  const decoratorNames = decorators.map(decoratorName);
+
+  const keyName = t.isIdentifier(member.key)
+    ? member.key.name
+    : t.isPrivateName(member.key) && t.isIdentifier(member.key.id)
+      ? member.key.id.name
+      : undefined;
+
+  if (!keyName) {
+    return undefined;
+  }
+
+  let kind: FieldIR['kind'] = 'plain';
+  let useTarget: UseTargetIR | undefined;
+
+  if (decoratorNames.includes('state')) {
+    kind = 'state';
+  } else if (decoratorNames.includes('ref')) {
+    kind = 'ref';
+  } else if (decoratorNames.includes('use')) {
+    kind = 'use';
+    const useDecorator = decorators.find((current) => decoratorName(current) === 'use');
+    if (useDecorator) {
+      useTarget = extractUseTarget(useDecorator);
+    }
+  }
+
+  const initializer =
+    member.value && t.isExpression(member.value) ? member.value : undefined;
+  const typeAnnotation = typeAnnotationText(member.typeAnnotation);
+
+  return {
+    name: keyName,
+    kind,
+    ...(initializer ? { initializer, initializerText: generateCode(initializer) } : {}),
+    ...(typeAnnotation ? { typeAnnotation } : {}),
+    ...(useTarget ? { useTarget } : {}),
+    location: loc(member),
+    isPrivate: t.isPrivateName(member.key),
+    decoratorNames,
+  };
+}
+
+function extractMethod(
+  member: t.ClassMethod,
+): {
+  method?: MethodIR;
+  getter?: GetterIR;
+  render?: RenderIR;
+  resolve?: ResolveIR;
+  ctor?: ConstructorIR;
+} {
+  const decorators = member.decorators ?? [];
+  const decoratorNames = decorators.map(decoratorName);
+  const keyName = t.isIdentifier(member.key) ? member.key.name : undefined;
+
+  if (member.kind === 'constructor') {
+    return {
+      ctor: {
+        params: member.params.map(extractFunctionParam),
+        body: member.body,
+        bodyText: generateCode(member.body),
+        location: loc(member),
+      },
+    };
+  }
+
+  if (!keyName) {
+    return {};
+  }
+
+  if (member.kind === 'get') {
+    const returnType = typeAnnotationText(member.returnType);
+    return {
+      getter: {
+        name: keyName,
+        body: member.body,
+        bodyText: generateCode(member.body),
+        dependencies: [],
+        ...(returnType ? { returnType } : {}),
+        location: loc(member),
+      },
+    };
+  }
+
+  if (member.kind === 'method' && keyName === 'render') {
+    return {
+      render: {
+        body: member.body,
+        bodyText: generateCode(member.body),
+        location: loc(member),
+      },
+    };
+  }
+
+  if (member.kind === 'method' && keyName === 'resolve') {
+    const returnType = typeAnnotationText(member.returnType);
+    return {
+      resolve: {
+        body: member.body,
+        bodyText: generateCode(member.body),
+        ...(returnType ? { returnType } : {}),
+        location: loc(member),
+      },
+    };
+  }
+
+  if (member.kind === 'method') {
+    let kind: MethodIR['kind'] = 'method';
+    const returnType = typeAnnotationText(member.returnType);
+    if (decoratorNames.includes('effect.layout')) {
+      kind = 'layoutEffect';
+    } else if (decoratorNames.includes('effect')) {
+      kind = 'effect';
+    }
+
+    return {
+      method: {
+        name: keyName,
+        kind,
+        params: member.params.map(extractFunctionParam),
+        body: member.body,
+        bodyText: generateCode(member.body),
+        async: member.async,
+        dependencies: [],
+        ...(returnType ? { returnType } : {}),
+        location: loc(member),
+        decoratorNames,
+      },
+    };
+  }
+
+  return {};
+}
+
+export function createModuleIR(source: string, filePath: string): MeridianModuleIR {
+  const ast = parseTypeScriptModule(source);
   const imports: ImportIR[] = [];
+  const rawClasses: RawClassRecord[] = [];
 
-  for (const node of ast.program.body) {
-    if (!t.isImportDeclaration(node)) continue;
-
-    const namedBindings: string[] = [];
-    let defaultBinding: string | undefined;
-
-    for (const specifier of node.specifiers) {
-      if (t.isImportSpecifier(specifier)) {
-        namedBindings.push(
-          t.isIdentifier(specifier.local) ? specifier.local.name : specifier.imported.type === 'Identifier' ? specifier.imported.name : specifier.imported.value,
-        );
-      } else if (t.isImportDefaultSpecifier(specifier)) {
-        defaultBinding = specifier.local.name;
-      }
-    }
-
-    const entry: ImportIR = { moduleSpecifier: node.source.value, namedBindings };
-    if (defaultBinding !== undefined) entry.defaultBinding = defaultBinding;
-    imports.push(entry);
+  let clientDirective = false;
+  if (ast.program.directives?.some((directive) => directive.value.value === 'use client')) {
+    clientDirective = true;
+  } else {
+    const firstStatement = ast.program.body[0];
+    clientDirective =
+      Boolean(
+        firstStatement &&
+          t.isExpressionStatement(firstStatement) &&
+          t.isStringLiteral(firstStatement.expression) &&
+          firstStatement.expression.value === 'use client',
+      );
   }
 
-  // -------------------------------------------------------------------------
-  // Find Meridian class declarations
-  // -------------------------------------------------------------------------
-  const declarations: MeridianDeclarationIR[] = [];
+  for (const statement of ast.program.body) {
+    if (t.isImportDeclaration(statement)) {
+      const namedBindings: NamedImportBindingIR[] = [];
+      let defaultBinding: string | undefined;
+      let sideEffectOnly = statement.specifiers.length === 0;
 
-  for (const node of ast.program.body) {
-    // Support: `export default class X extends ...` and `export class X extends ...`
-    // and bare `class X extends ...`
-    let classNode: t.ClassDeclaration | null = null;
-    let isExportDefault = false;
+      for (const specifier of statement.specifiers) {
+        if (t.isImportSpecifier(specifier)) {
+          namedBindings.push(extractNamedImport(specifier));
+          sideEffectOnly = false;
+          continue;
+        }
 
-    if (t.isClassDeclaration(node)) {
-      classNode = node;
-    } else if (t.isExportDefaultDeclaration(node) && t.isClassDeclaration(node.declaration)) {
-      classNode = node.declaration;
-      isExportDefault = true;
-    } else if (t.isExportNamedDeclaration(node) && node.declaration && t.isClassDeclaration(node.declaration)) {
-      classNode = node.declaration;
-    }
+        if (t.isImportDefaultSpecifier(specifier)) {
+          defaultBinding = specifier.local.name;
+          sideEffectOnly = false;
+        }
+      }
 
-    if (!classNode) continue;
-
-    const superName = superClassName(classNode.superClass);
-    const className = classNode.id?.name ?? '<anonymous>';
-
-    // M004: ServerComponent (check before the Meridian filter)
-    if (className === 'ServerComponent' || superName === 'ServerComponent') {
-      diagnostics.push(
-        makeDiagnostic('M004', 'error', filePath, loc(classNode).line, loc(classNode).column),
-      );
+      imports.push({
+        moduleSpecifier: statement.source.value,
+        ...(defaultBinding ? { defaultBinding } : {}),
+        namedBindings,
+        ...(sideEffectOnly ? { sideEffectOnly: true } : {}),
+      });
       continue;
     }
 
-    if (superName !== 'Component' && superName !== 'Primitive') continue;
+    let classNode: t.ClassDeclaration | undefined;
+    let exportDefault = false;
 
-    const kind: MeridianDeclarationIR['kind'] = superName === 'Component' ? 'component' : 'primitive';
-
-    // M002: decorated inheritance — if the superclass itself extends something
-    // We can't fully detect this at parse time without type info, but we check
-    // if the superTypeParameters contain suspicious nested types (best-effort).
-    // The main check: if classNode.superClass is not a plain identifier but
-    // itself a class expression or complex expression, that implies deep nesting.
-    // In practice, M002 is enforced downstream; here we emit it if superClass
-    // is not a plain Identifier (i.e. something like `Foo extends Bar.Baz`).
-    // Simple heuristic — if classNode.superClass is a MemberExpression, warn.
-    if (classNode.superClass && t.isMemberExpression(classNode.superClass)) {
-      diagnostics.push(
-        makeDiagnostic('M002', 'error', filePath, loc(classNode).line, loc(classNode).column),
-      );
+    if (t.isClassDeclaration(statement)) {
+      classNode = statement;
+    } else if (
+      t.isExportDefaultDeclaration(statement) &&
+      t.isClassDeclaration(statement.declaration)
+    ) {
+      classNode = statement.declaration;
+      exportDefault = true;
+    } else if (
+      t.isExportNamedDeclaration(statement) &&
+      statement.declaration &&
+      t.isClassDeclaration(statement.declaration)
+    ) {
+      classNode = statement.declaration;
     }
 
-    // Extract superTypeParameters for propsType
-    const superTypeParams = (classNode as t.ClassDeclaration & {
-      superTypeParameters?: t.TSTypeParameterInstantiation;
-    }).superTypeParameters;
-    const propsType = extractPropsType(superTypeParams);
+    if (!classNode || !classNode.id) {
+      continue;
+    }
 
-    // -----------------------------------------------------------------------
-    // Walk class body
-    // -----------------------------------------------------------------------
+    const directSuperClassName = superClassName(classNode.superClass);
+    rawClasses.push({
+      name: classNode.id.name,
+      ...(directSuperClassName ? { superClassName: directSuperClassName } : {}),
+      exportDefault,
+      node: classNode,
+    });
+  }
+
+  const classMap = new Map(rawClasses.map((record) => [record.name, record]));
+  const localClasses: LocalClassIR[] = rawClasses.map((record) => ({
+    name: record.name,
+    ...(record.superClassName ? { superClassName: record.superClassName } : {}),
+    location: loc(record.node),
+  }));
+
+  const declarations: MeridianDeclarationIR[] = [];
+
+  for (const record of rawClasses) {
+    if (!isMeridianCandidate(record, classMap)) {
+      continue;
+    }
+
+    const classDecoratorNames = (record.node.decorators ?? []).map(decoratorName);
     const fields: FieldIR[] = [];
     const getters: GetterIR[] = [];
     const methods: MethodIR[] = [];
     let render: RenderIR | undefined;
     let resolve: ResolveIR | undefined;
-    let constructor: ConstructorIR | undefined;
+    let ctor: ConstructorIR | undefined;
 
-    // Collect state field names and getter names for dependency inference
-    // (two-pass: first scan all fields/getters, then infer deps)
-    const stateNames = new Set<string>();
-    const refNames = new Set<string>();
-    const useNames = new Set<string>();
-    const getterNamesSet = new Set<string>();
-
-    // First pass: classify members to build sets for dep inference
-    for (const member of classNode.body.body) {
-      if (t.isClassProperty(member) || t.isClassAccessorProperty(member)) {
-        const keyName = t.isIdentifier(member.key) ? member.key.name : null;
-        if (!keyName) continue;
-
-        const decorators = (member.decorators ?? []) as t.Decorator[];
-        for (const dec of decorators) {
-          const name = decoratorName(dec);
-          if (name === 'state') stateNames.add(keyName);
-          else if (name === 'ref') refNames.add(keyName);
-          else if (name === 'use') useNames.add(keyName);
+    for (const member of record.node.body.body) {
+      if (t.isClassProperty(member) || t.isClassPrivateProperty(member)) {
+        const field = extractField(member);
+        if (field) {
+          fields.push(field);
         }
-      } else if (t.isClassMethod(member) && member.kind === 'get') {
-        const keyName = t.isIdentifier(member.key) ? member.key.name : null;
-        if (keyName) getterNamesSet.add(keyName);
-      }
-    }
-
-    // Second pass: full extraction
-    for (const member of classNode.body.body) {
-      // ------------------------------------------------------------------
-      // Class properties / fields
-      // ------------------------------------------------------------------
-      if (t.isClassProperty(member)) {
-        const keyName = t.isIdentifier(member.key) ? member.key.name : null;
-        if (!keyName) continue;
-
-        const decorators = (member.decorators ?? []) as t.Decorator[];
-
-        // Check for unsupported / M005 decorators
-        for (const dec of decorators) {
-          const name = decoratorName(dec);
-          if (name === 'raw') {
-            diagnostics.push(
-              makeDiagnostic('M005', 'error', filePath, loc(dec).line, loc(dec).column),
-            );
-          } else if (!SUPPORTED_DECORATORS.has(name) && name !== '<unknown>') {
-            diagnostics.push(
-              makeDiagnostic('M003', 'error', filePath, loc(dec).line, loc(dec).column, {
-                name,
-              }),
-            );
-          } else if (name === '<unknown>') {
-            diagnostics.push(
-              makeDiagnostic('M003', 'error', filePath, loc(dec).line, loc(dec).column, {
-                name: bodyText(dec.expression),
-              }),
-            );
-          }
-        }
-
-        // Determine field kind from decorator
-        let fieldKind: FieldIR['kind'] = 'plain';
-        let useTarget: FieldIR['useTarget'];
-
-        const primaryDec = decorators[0];
-        if (primaryDec) {
-          const name = decoratorName(primaryDec);
-          if (name === 'state') fieldKind = 'state';
-          else if (name === 'ref') fieldKind = 'ref';
-          else if (name === 'use') {
-            fieldKind = 'use';
-            const target = extractUseTarget(primaryDec);
-            if (target) useTarget = target;
-          }
-        }
-
-        const initializer = member.value ? bodyText(member.value) : undefined;
-
-        const field: FieldIR = {
-          name: keyName,
-          kind: fieldKind,
-          location: loc(member),
-          ...(initializer !== undefined ? { initializer } : {}),
-          ...(useTarget !== undefined ? { useTarget } : {}),
-        };
-        fields.push(field);
         continue;
       }
 
-      // ------------------------------------------------------------------
-      // Class methods
-      // ------------------------------------------------------------------
-      if (t.isClassMethod(member)) {
-        const keyName = t.isIdentifier(member.key) ? member.key.name : null;
+      if (!t.isClassMethod(member)) {
+        continue;
+      }
 
-        // constructor
-        if (member.kind === 'constructor') {
-          const params: ConstructorParamIR[] = member.params.map((p): ConstructorParamIR => {
-            if (t.isIdentifier(p)) {
-              const typeStr = typeAnnotationText(p.typeAnnotation);
-              return {
-                name: p.name,
-                optional: p.optional ?? false,
-                ...(typeStr !== undefined ? { type: typeStr } : {}),
-              };
-            }
-            if (t.isAssignmentPattern(p) && t.isIdentifier(p.left)) {
-              const typeStr = typeAnnotationText((p.left as t.Identifier).typeAnnotation);
-              return {
-                name: p.left.name,
-                optional: true,
-                ...(typeStr !== undefined ? { type: typeStr } : {}),
-              };
-            }
-            if (t.isRestElement(p) && t.isIdentifier(p.argument)) {
-              return { name: `...${p.argument.name}`, optional: false };
-            }
-            // TSParameterProperty (e.g. `private name: string`)
-            if (t.isTSParameterProperty(p)) {
-              const inner = p.parameter;
-              if (t.isIdentifier(inner)) {
-                const typeStr = typeAnnotationText(inner.typeAnnotation);
-                return {
-                  name: inner.name,
-                  optional: inner.optional ?? false,
-                  ...(typeStr !== undefined ? { type: typeStr } : {}),
-                };
-              }
-              if (t.isAssignmentPattern(inner) && t.isIdentifier(inner.left)) {
-                const typeStr = typeAnnotationText((inner.left as t.Identifier).typeAnnotation);
-                return {
-                  name: inner.left.name,
-                  optional: true,
-                  ...(typeStr !== undefined ? { type: typeStr } : {}),
-                };
-              }
-            }
-            return { name: bodyText(p), optional: false };
-          });
-
-          constructor = {
-            params,
-            body: bodyText(member.body),
-            location: loc(member),
-          };
-          continue;
-        }
-
-        // getter
-        if (member.kind === 'get' && keyName) {
-          const deps = inferDependencies(member.body, stateNames, getterNamesSet);
-          getters.push({
-            name: keyName,
-            body: bodyText(member.body),
-            dependencies: deps,
-            location: loc(member),
-          });
-          continue;
-        }
-
-        // render()
-        if (member.kind === 'method' && keyName === 'render') {
-          render = {
-            body: bodyText(member.body),
-            location: loc(member),
-          };
-          continue;
-        }
-
-        // resolve()
-        if (member.kind === 'method' && keyName === 'resolve') {
-          const returnTypeAnnotation = member.returnType as t.TSTypeAnnotation | null | undefined;
-          const returnType = typeAnnotationText(returnTypeAnnotation);
-          resolve = {
-            body: bodyText(member.body),
-            ...(returnType !== undefined ? { returnType } : {}),
-            location: loc(member),
-          };
-          continue;
-        }
-
-        // Decorated methods: @effect, @effect.layout
-        if (member.kind === 'method' && keyName) {
-          const decorators = (member.decorators ?? []) as t.Decorator[];
-
-          // Validate decorators on methods
-          for (const dec of decorators) {
-            const name = decoratorName(dec);
-            if (name === 'raw') {
-              diagnostics.push(
-                makeDiagnostic('M005', 'error', filePath, loc(dec).line, loc(dec).column),
-              );
-            } else if (!SUPPORTED_DECORATORS.has(name) && name !== '<unknown>' && name !== 'effect' && name !== 'effect.layout') {
-              // Already covered above; @state/@ref/@use on a method is unusual but won't be double-emitted
-            }
-          }
-
-          const primaryDec = decorators[0];
-          let methodKind: MethodIR['kind'] = 'method';
-
-          if (primaryDec) {
-            const name = decoratorName(primaryDec);
-            if (name === 'effect') methodKind = 'effect';
-            else if (name === 'effect.layout') methodKind = 'layoutEffect';
-            else if (!SUPPORTED_DECORATORS.has(name) && name !== '<unknown>') {
-              diagnostics.push(
-                makeDiagnostic('M003', 'error', filePath, loc(primaryDec).line, loc(primaryDec).column, {
-                  name,
-                }),
-              );
-            } else if (name === '<unknown>') {
-              diagnostics.push(
-                makeDiagnostic('M003', 'error', filePath, loc(primaryDec).line, loc(primaryDec).column, {
-                  name: bodyText(primaryDec.expression),
-                }),
-              );
-            }
-          }
-
-          const deps = inferDependencies(member.body, stateNames, getterNamesSet);
-
-          methods.push({
-            name: keyName,
-            kind: methodKind,
-            body: bodyText(member.body),
-            async: member.async,
-            dependencies: deps,
-            location: loc(member),
-          });
-          continue;
-        }
+      const extracted = extractMethod(member);
+      if (extracted.ctor) {
+        ctor = extracted.ctor;
+      }
+      if (extracted.getter) {
+        getters.push(extracted.getter);
+      }
+      if (extracted.method) {
+        methods.push(extracted.method);
+      }
+      if (extracted.render) {
+        render = extracted.render;
+      }
+      if (extracted.resolve) {
+        resolve = extracted.resolve;
       }
     }
 
-    // M006: Component must have render()
-    if (kind === 'component' && render === undefined) {
-      diagnostics.push(
-        makeDiagnostic('M006', 'error', filePath, loc(classNode).line, loc(classNode).column),
-      );
-    }
-
-    // M007: Primitive must have resolve()
-    if (kind === 'primitive' && resolve === undefined) {
-      diagnostics.push(
-        makeDiagnostic('M007', 'error', filePath, loc(classNode).line, loc(classNode).column),
-      );
-    }
-
-    const decl: MeridianDeclarationIR = {
-      name: className,
-      kind,
-      exportDefault: isExportDefault,
+    const propsType = extractPropsType(record.node);
+    declarations.push({
+      name: record.name,
+      kind:
+        record.superClassName === 'Primitive'
+          ? 'primitive'
+          : record.superClassName === 'Component'
+            ? 'component'
+            : classMap.get(record.superClassName ?? '')?.superClassName === 'Primitive'
+              ? 'primitive'
+              : 'component',
+      exportDefault: record.exportDefault,
+      ...(propsType ? { propsType } : {}),
+      ...(record.superClassName ? { superClassName: record.superClassName } : {}),
       fields,
       getters,
       methods,
-      ...(propsType !== undefined ? { propsType } : {}),
-      ...(render !== undefined ? { render } : {}),
-      ...(resolve !== undefined ? { resolve } : {}),
-      ...(constructor !== undefined ? { constructor } : {}),
-    };
-
-    declarations.push(decl);
-  }
-
-  // -------------------------------------------------------------------------
-  // M001: 'use client' required when Meridian declarations exist
-  // -------------------------------------------------------------------------
-  if (!clientDirective && declarations.length > 0) {
-    // Emit at line 1, column 0
-    diagnostics.push(makeDiagnostic('M001', 'error', filePath, 1, 0));
+      ...(render ? { render } : {}),
+      ...(resolve ? { resolve } : {}),
+      ...(ctor ? { ctor } : {}),
+      location: loc(record.node),
+      decoratorNames: classDecoratorNames,
+    });
   }
 
   return {
@@ -589,6 +501,16 @@ export function parseModule(source: string, filePath: string): MeridianModuleIR 
     clientDirective,
     imports,
     declarations,
-    diagnostics,
+    localClasses,
+    diagnostics: [],
+    ast,
+  };
+}
+
+export function parseModule(source: string, filePath: string): MeridianModuleIR {
+  const moduleIR = createModuleIR(source, filePath);
+  return {
+    ...moduleIR,
+    diagnostics: validateModule(moduleIR),
   };
 }

@@ -1,5 +1,5 @@
 'use client';
-import { Component, state, effect } from '@meridian/meridian';
+import { Component, state, effect } from 'meridian';
 
 export default class DynamicDeps extends Component<{ keys: string[] }> {
   @state values: Record<string, number> = {};

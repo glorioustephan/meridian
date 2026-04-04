@@ -1,185 +1,431 @@
-import * as babelParser from '@babel/parser';
-import _traverse from '@babel/traverse';
 import * as t from '@babel/types';
-import * as _generateModule from '@babel/generator';
-
-// ESM compat shim: same pattern as parser/index.ts
-type GenerateFn = (node: t.Node, opts?: Record<string, unknown>) => { code: string };
-const generate: GenerateFn =
-  ((_generateModule as unknown as { default?: GenerateFn }).default ??
-    _generateModule) as GenerateFn;
-
-// @babel/traverse ships CJS with exports.default = traverse
-type TraverseFn = typeof _traverse;
-const traverse: TraverseFn =
-  ((_traverse as unknown as { default?: TraverseFn }).default ?? _traverse) as TraverseFn;
-
-// ---------------------------------------------------------------------------
-// Public types
-// ---------------------------------------------------------------------------
+import { cloneNode } from '../ast.js';
 
 export interface RewriteContext {
-  /** Names of @state fields */
   stateFields: Set<string>;
-  /** fieldName -> setter name, e.g. "count" -> "setCount" */
   stateSetters: Map<string, string>;
-  /** Names of @ref fields */
   refFields: Set<string>;
-  /** Names of getter properties */
   getterNames: Set<string>;
-  /** Names of plain methods */
   methodNames: Set<string>;
+  localNames: Set<string>;
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Derive a React setter name from a state field name.
- * "count" -> "setCount", "myValue" -> "setMyValue"
- */
 export function toSetterName(fieldName: string): string {
   return `set${fieldName.charAt(0).toUpperCase()}${fieldName.slice(1)}`;
 }
 
-// ---------------------------------------------------------------------------
-// Core rewrite
-// ---------------------------------------------------------------------------
+function isDirectThisMember(
+  node: t.MemberExpression,
+): node is t.MemberExpression & { object: t.ThisExpression; property: t.Identifier } {
+  return (
+    t.isThisExpression(node.object) &&
+    !node.computed &&
+    t.isIdentifier(node.property)
+  );
+}
 
-/**
- * Rewrite `this.xxx` references inside a body code string using Babel AST
- * traversal. The `bodyCode` is expected to be a block statement string
- * (with surrounding braces) as produced by @babel/generator on a
- * ClassMethod body.
- *
- * Rewrites applied:
- *   - `this.props.X`           -> `props.X`
- *   - `this.stateField`        -> `stateField`           (read)
- *   - `this.stateField = val`  -> `setStateField(val)`   (write via AssignmentExpression)
- *   - `this.refField`          -> `refField`
- *   - `this.getterName`        -> `getterName`
- *   - `this.methodName`        -> `methodName`
- *   - anything else            -> left as-is
- */
-export function rewriteBody(bodyCode: string, ctx: RewriteContext): string {
-  // Wrap in an async function so `await` inside bodies is parsed correctly.
-  // We parse as a script so we don't need sourceType:'module'.
-  const wrapped = `(async function __meridian_wrap__() ${bodyCode})`;
+function rewriteMemberExpression(
+  node: t.MemberExpression,
+  ctx: RewriteContext,
+): t.Expression {
+  if (isDirectThisMember(node)) {
+    const name = node.property.name;
 
-  let ast: t.File;
-  try {
-    ast = babelParser.parse(wrapped, {
-      sourceType: 'script',
-      plugins: ['typescript', 'jsx'],
-      attachComment: true,
-    });
-  } catch {
-    // If parsing fails (e.g. the body has JSX with decorators), return as-is
-    return bodyCode;
+    if (name === 'props') {
+      return t.identifier('props');
+    }
+
+    if (
+      ctx.stateFields.has(name) ||
+      ctx.refFields.has(name) ||
+      ctx.getterNames.has(name) ||
+      ctx.methodNames.has(name) ||
+      ctx.localNames.has(name)
+    ) {
+      return t.identifier(name);
+    }
   }
 
-  // Track nodes that need replacement so we can do it in the exit phase
-  // after children have been visited. We use a WeakMap keyed on the parent
-  // node to store replacement info.
-  //
-  // Strategy:
-  //   1. Collect AssignmentExpression nodes where left is `this.stateField`
-  //      and replace the whole assignment with a setter call node.
-  //   2. Replace remaining `this.xxx` MemberExpression nodes with identifiers
-  //      or `props.xxx`.
-  //
-  // We must handle assignments BEFORE member-expression replacement so the
-  // left-hand `this.stateField` isn't replaced with a bare identifier first.
+  const cloned = cloneNode(node);
+  cloned.object = rewriteExpression(cloned.object, ctx);
 
-  traverse(ast, {
-    // Handle `this.stateField = value` assignments
-    AssignmentExpression(path) {
-      const { left, right, operator } = path.node;
+  if (cloned.computed && t.isExpression(cloned.property)) {
+    cloned.property = rewriteExpression(cloned.property, ctx);
+  }
 
-      // Only handle `=` for now (+=, -=, etc. are left as-is since we can't
-      // naively convert them without reading the state value)
-      if (operator !== '=') return;
-      if (!t.isMemberExpression(left)) return;
-      if (!t.isThisExpression(left.object)) return;
-      if (left.computed) return;
-      if (!t.isIdentifier(left.property)) return;
+  return cloned;
+}
 
-      const fieldName = left.property.name;
-      const setter = ctx.stateSetters.get(fieldName);
-      if (!setter) return;
+function rewriteAssignmentExpression(
+  node: t.AssignmentExpression,
+  ctx: RewriteContext,
+): t.Expression {
+  if (
+    node.operator === '=' &&
+    t.isMemberExpression(node.left) &&
+    isDirectThisMember(node.left)
+  ) {
+    const setter = ctx.stateSetters.get(node.left.property.name);
+    if (setter) {
+      return t.callExpression(t.identifier(setter), [
+        rewriteExpression(node.right, ctx),
+      ]);
+    }
+  }
 
-      // Replace `this.stateField = val` with `setStateField(val)`.
-      // Do NOT skip after replaceWith — Babel will re-enter the new CallExpression
-      // and the MemberExpression visitor will correctly rewrite any `this.xxx`
-      // references inside the right-hand side value (e.g. constructor params).
-      path.replaceWith(t.callExpression(t.identifier(setter), [right]));
-    },
+  const cloned = cloneNode(node);
+  if (t.isExpression(cloned.left)) {
+    cloned.left = rewriteExpression(cloned.left, ctx) as t.LVal;
+  }
+  cloned.right = rewriteExpression(cloned.right, ctx);
+  return cloned;
+}
 
-    // Handle `this.xxx` member expression reads
-    MemberExpression(path) {
-      const { object, property, computed } = path.node;
+function rewriteArrayExpression(
+  node: t.ArrayExpression,
+  ctx: RewriteContext,
+): t.ArrayExpression {
+  const cloned = cloneNode(node);
+  cloned.elements = cloned.elements.map((element) => {
+    if (!element) {
+      return element;
+    }
 
-      if (!t.isThisExpression(object)) return;
-      if (computed) return;
-      if (!t.isIdentifier(property)) return;
+    if (t.isSpreadElement(element)) {
+      return t.spreadElement(rewriteExpression(element.argument, ctx));
+    }
 
-      const propName = property.name;
-
-      // `this.props` -> `props` identifier, but only if the PARENT is also a
-      // MemberExpression (i.e. `this.props.foo`). We replace `this.props`
-      // with `props` and the parent naturally becomes `props.foo`.
-      if (propName === 'props') {
-        path.replaceWith(t.identifier('props'));
-        path.skip();
-        return;
-      }
-
-      // State field reads (assignment case handled above)
-      if (ctx.stateFields.has(propName)) {
-        path.replaceWith(t.identifier(propName));
-        path.skip();
-        return;
-      }
-
-      // Ref fields
-      if (ctx.refFields.has(propName)) {
-        path.replaceWith(t.identifier(propName));
-        path.skip();
-        return;
-      }
-
-      // Getter names
-      if (ctx.getterNames.has(propName)) {
-        path.replaceWith(t.identifier(propName));
-        path.skip();
-        return;
-      }
-
-      // Method names
-      if (ctx.methodNames.has(propName)) {
-        path.replaceWith(t.identifier(propName));
-        path.skip();
-        return;
-      }
-
-      // Unknown `this.xxx` — leave as-is (per spec: do not error in codegen)
-    },
+    return rewriteExpression(element, ctx);
   });
+  return cloned;
+}
 
-  // Re-generate. The wrapper is `(async function __meridian_wrap__() { body })`
-  // which parses as ExpressionStatement > FunctionExpression (parenthesized).
-  // Extract the function body BlockStatement and regenerate it.
-  const program = ast.program;
-  const exprStmt = program.body[0];
-  if (!exprStmt || !t.isExpressionStatement(exprStmt)) {
-    return bodyCode;
+function rewriteObjectExpression(
+  node: t.ObjectExpression,
+  ctx: RewriteContext,
+): t.ObjectExpression {
+  const cloned = cloneNode(node);
+  cloned.properties = cloned.properties.map((property) => {
+    if (t.isSpreadElement(property)) {
+      return t.spreadElement(rewriteExpression(property.argument, ctx));
+    }
+
+    if (t.isObjectProperty(property)) {
+      const next = cloneNode(property);
+      if (t.isExpression(next.value)) {
+        next.value = rewriteExpression(next.value, ctx);
+      }
+      return next;
+    }
+
+    if (t.isObjectMethod(property)) {
+      const next = cloneNode(property);
+      next.body = rewriteBlockStatement(next.body, ctx);
+      return next;
+    }
+
+    return property;
+  });
+  return cloned;
+}
+
+function rewriteTemplateLiteral(
+  node: t.TemplateLiteral,
+  ctx: RewriteContext,
+): t.TemplateLiteral {
+  const cloned = cloneNode(node);
+  cloned.expressions = cloned.expressions.map((expression) =>
+    t.isExpression(expression) ? rewriteExpression(expression, ctx) : expression,
+  );
+  return cloned;
+}
+
+function rewriteCallExpression(
+  node: t.CallExpression,
+  ctx: RewriteContext,
+): t.CallExpression {
+  const cloned = cloneNode(node);
+  if (t.isExpression(cloned.callee)) {
+    cloned.callee = rewriteExpression(cloned.callee, ctx);
+  }
+  cloned.arguments = cloned.arguments.map((argument) => {
+    if (t.isSpreadElement(argument)) {
+      return t.spreadElement(rewriteExpression(argument.argument, ctx));
+    }
+    if (t.isExpression(argument)) {
+      return rewriteExpression(argument, ctx);
+    }
+    return argument;
+  });
+  return cloned;
+}
+
+function rewriteJSXElement<T extends t.JSXElement | t.JSXFragment>(
+  node: T,
+  ctx: RewriteContext,
+): T {
+  const cloned = cloneNode(node);
+
+  if (t.isJSXElement(cloned)) {
+    cloned.openingElement.attributes = cloned.openingElement.attributes.map((attribute) => {
+      if (t.isJSXSpreadAttribute(attribute)) {
+        const next = cloneNode(attribute);
+        next.argument = rewriteExpression(attribute.argument, ctx);
+        return next;
+      }
+
+      if (
+        t.isJSXAttribute(attribute) &&
+        attribute.value &&
+        t.isJSXExpressionContainer(attribute.value) &&
+        !t.isJSXEmptyExpression(attribute.value.expression)
+      ) {
+        const next = cloneNode(attribute);
+        next.value = t.jsxExpressionContainer(
+          rewriteExpression(attribute.value.expression, ctx),
+        );
+        return next;
+      }
+
+      return attribute;
+    });
   }
 
-  const expr = exprStmt.expression;
-  if (!t.isFunctionExpression(expr)) {
-    return bodyCode;
+  const children = cloned.children.map((child) => {
+    if (t.isJSXExpressionContainer(child) && child.expression && !t.isJSXEmptyExpression(child.expression)) {
+      const next = cloneNode(child);
+      next.expression = rewriteExpression(child.expression, ctx);
+      return next;
+    }
+
+    if (t.isJSXElement(child)) {
+      return rewriteJSXElement(child, ctx);
+    }
+
+    if (t.isJSXFragment(child)) {
+      return rewriteJSXElement(child, ctx);
+    }
+
+    return child;
+  });
+  cloned.children = children as T['children'];
+  return cloned;
+}
+
+function rewriteStatement(statement: t.Statement, ctx: RewriteContext): t.Statement {
+  if (t.isExpressionStatement(statement)) {
+    return t.expressionStatement(rewriteExpression(statement.expression, ctx));
   }
 
-  return generate(expr.body).code;
+  if (t.isReturnStatement(statement)) {
+    return t.returnStatement(
+      statement.argument ? rewriteExpression(statement.argument, ctx) : null,
+    );
+  }
+
+  if (t.isVariableDeclaration(statement)) {
+    const cloned = cloneNode(statement);
+    cloned.declarations = cloned.declarations.map((declaration) => {
+      const next = cloneNode(declaration);
+      if (next.init) {
+        next.init = rewriteExpression(next.init, ctx);
+      }
+      return next;
+    });
+    return cloned;
+  }
+
+  if (t.isIfStatement(statement)) {
+    const cloned = cloneNode(statement);
+    cloned.test = rewriteExpression(cloned.test, ctx);
+    cloned.consequent = rewriteStatementOrBlock(cloned.consequent, ctx);
+    if (cloned.alternate) {
+      cloned.alternate = rewriteStatementOrBlock(cloned.alternate, ctx);
+    }
+    return cloned;
+  }
+
+  if (t.isBlockStatement(statement)) {
+    return rewriteBlockStatement(statement, ctx);
+  }
+
+  if (t.isForStatement(statement)) {
+    const cloned = cloneNode(statement);
+    if (cloned.init && t.isExpression(cloned.init)) {
+      cloned.init = rewriteExpression(cloned.init, ctx);
+    }
+    if (cloned.test) {
+      cloned.test = rewriteExpression(cloned.test, ctx);
+    }
+    if (cloned.update) {
+      cloned.update = rewriteExpression(cloned.update, ctx);
+    }
+    cloned.body = rewriteStatementOrBlock(cloned.body, ctx);
+    return cloned;
+  }
+
+  if (t.isForInStatement(statement) || t.isForOfStatement(statement)) {
+    const cloned = cloneNode(statement);
+    if (t.isExpression(cloned.right)) {
+      cloned.right = rewriteExpression(cloned.right, ctx);
+    }
+    if (t.isExpression(cloned.left)) {
+      cloned.left = rewriteExpression(cloned.left, ctx) as t.ForXStatement['left'];
+    }
+    cloned.body = rewriteStatementOrBlock(cloned.body, ctx);
+    return cloned;
+  }
+
+  if (t.isWhileStatement(statement) || t.isDoWhileStatement(statement)) {
+    const cloned = cloneNode(statement);
+    cloned.test = rewriteExpression(cloned.test, ctx);
+    cloned.body = rewriteStatementOrBlock(cloned.body, ctx);
+    return cloned;
+  }
+
+  if (t.isTryStatement(statement)) {
+    const cloned = cloneNode(statement);
+    cloned.block = rewriteBlockStatement(cloned.block, ctx);
+    if (cloned.handler?.body) {
+      cloned.handler.body = rewriteBlockStatement(cloned.handler.body, ctx);
+    }
+    if (cloned.finalizer) {
+      cloned.finalizer = rewriteBlockStatement(cloned.finalizer, ctx);
+    }
+    return cloned;
+  }
+
+  return cloneNode(statement);
+}
+
+function rewriteStatementOrBlock(
+  node: t.Statement,
+  ctx: RewriteContext,
+): t.Statement {
+  return t.isBlockStatement(node) ? rewriteBlockStatement(node, ctx) : rewriteStatement(node, ctx);
+}
+
+export function rewriteExpression(expression: t.Expression, ctx: RewriteContext): t.Expression {
+  if (t.isAssignmentExpression(expression)) {
+    return rewriteAssignmentExpression(expression, ctx);
+  }
+
+  if (t.isMemberExpression(expression)) {
+    return rewriteMemberExpression(expression, ctx);
+  }
+
+  if (t.isCallExpression(expression)) {
+    return rewriteCallExpression(expression, ctx);
+  }
+
+  if (t.isArrowFunctionExpression(expression)) {
+    const cloned = cloneNode(expression);
+    if (t.isBlockStatement(cloned.body)) {
+      cloned.body = rewriteBlockStatement(cloned.body, ctx);
+    } else {
+      cloned.body = rewriteExpression(cloned.body, ctx);
+    }
+    return cloned;
+  }
+
+  if (t.isFunctionExpression(expression)) {
+    const cloned = cloneNode(expression);
+    cloned.body = rewriteBlockStatement(cloned.body, ctx);
+    return cloned;
+  }
+
+  if (t.isConditionalExpression(expression)) {
+    const cloned = cloneNode(expression);
+    cloned.test = rewriteExpression(cloned.test, ctx);
+    cloned.consequent = rewriteExpression(cloned.consequent, ctx);
+    cloned.alternate = rewriteExpression(cloned.alternate, ctx);
+    return cloned;
+  }
+
+  if (t.isBinaryExpression(expression) || t.isLogicalExpression(expression)) {
+    const cloned = cloneNode(expression);
+    if (t.isExpression(cloned.left)) {
+      cloned.left = rewriteExpression(cloned.left, ctx);
+    }
+    cloned.right = rewriteExpression(cloned.right, ctx);
+    return cloned;
+  }
+
+  if (
+    t.isUnaryExpression(expression) ||
+    t.isAwaitExpression(expression) ||
+    t.isYieldExpression(expression)
+  ) {
+    const cloned = cloneNode(expression);
+    if ('argument' in cloned && cloned.argument) {
+      cloned.argument = rewriteExpression(cloned.argument, ctx);
+    }
+    return cloned;
+  }
+
+  if (t.isNewExpression(expression)) {
+    const cloned = cloneNode(expression);
+    if (t.isExpression(cloned.callee)) {
+      cloned.callee = rewriteExpression(cloned.callee, ctx);
+    }
+    cloned.arguments = (cloned.arguments ?? []).map((argument) => {
+      if (t.isSpreadElement(argument)) {
+        return t.spreadElement(rewriteExpression(argument.argument, ctx));
+      }
+      return t.isExpression(argument) ? rewriteExpression(argument, ctx) : argument;
+    });
+    return cloned;
+  }
+
+  if (t.isSequenceExpression(expression)) {
+    const cloned = cloneNode(expression);
+    cloned.expressions = cloned.expressions.map((current) => rewriteExpression(current, ctx));
+    return cloned;
+  }
+
+  if (t.isArrayExpression(expression)) {
+    return rewriteArrayExpression(expression, ctx);
+  }
+
+  if (t.isObjectExpression(expression)) {
+    return rewriteObjectExpression(expression, ctx);
+  }
+
+  if (t.isTemplateLiteral(expression)) {
+    return rewriteTemplateLiteral(expression, ctx);
+  }
+
+  if (t.isTaggedTemplateExpression(expression)) {
+    const cloned = cloneNode(expression);
+    cloned.tag = rewriteExpression(cloned.tag, ctx);
+    cloned.quasi = rewriteTemplateLiteral(cloned.quasi, ctx);
+    return cloned;
+  }
+
+  if (t.isTSAsExpression(expression) || t.isTSSatisfiesExpression(expression) || t.isTSNonNullExpression(expression) || t.isTypeCastExpression(expression)) {
+    const cloned = cloneNode(expression);
+    cloned.expression = rewriteExpression(cloned.expression, ctx);
+    return cloned;
+  }
+
+  if (t.isParenthesizedExpression(expression)) {
+    const cloned = cloneNode(expression);
+    cloned.expression = rewriteExpression(cloned.expression, ctx);
+    return cloned;
+  }
+
+  if (t.isJSXElement(expression) || t.isJSXFragment(expression)) {
+    return rewriteJSXElement(expression, ctx);
+  }
+
+  return cloneNode(expression);
+}
+
+export function rewriteBlockStatement(
+  block: t.BlockStatement,
+  ctx: RewriteContext,
+): t.BlockStatement {
+  const cloned = cloneNode(block);
+  cloned.body = cloned.body.map((statement) => rewriteStatement(statement, ctx));
+  return cloned;
 }

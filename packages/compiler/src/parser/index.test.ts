@@ -1,237 +1,287 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { parseModule } from './index.js';
 
 describe('parseModule', () => {
-  it('Test 1: valid Component module with use client', () => {
-    const src = `
+  it('parses a valid component and resolves dependencies', () => {
+    const result = parseModule(
+      `
 'use client';
-import { Component, state, effect } from '@meridian/meridian';
-import type React from 'react';
+import { Component, state, effect } from 'meridian';
 
 export default class Counter extends Component<{ initial: number }> {
-  @state count = 0;
+  @state count = this.props.initial;
 
-  get doubled() { return this.count * 2; }
+  get doubled() {
+    return this.count * 2;
+  }
 
-  @effect
-  watchCount() { console.log(this.count); }
+  @effect.layout
+  syncLayout(): void {
+    console.log(this.props.initial, this.count);
+  }
 
-  render() { return <div>{this.count}</div>; }
+  render() {
+    return <div>{this.doubled}</div>;
+  }
 }
-`;
+`,
+      'Counter.tsx',
+    );
 
-    const result = parseModule(src, 'Counter.tsx');
-
+    expect(result.diagnostics).toHaveLength(0);
     expect(result.clientDirective).toBe(true);
     expect(result.declarations).toHaveLength(1);
 
-    const decl = result.declarations[0];
-    expect(decl).toBeDefined();
-    if (!decl) throw new Error('no declaration');
+    const declaration = result.declarations[0];
+    expect(declaration?.name).toBe('Counter');
+    expect(declaration?.kind).toBe('component');
+    expect(declaration?.propsType).toContain('initial: number');
+    expect(declaration?.fields[0]?.name).toBe('count');
+    expect(declaration?.fields[0]?.initializerText).toBe('this.props.initial');
+    expect(declaration?.getters[0]?.dependencies).toEqual([{ source: 'state', name: 'count' }]);
+    expect(declaration?.methods[0]?.kind).toBe('layoutEffect');
+    expect(declaration?.methods[0]?.dependencies).toEqual([
+      { source: 'prop', name: 'initial' },
+      { source: 'state', name: 'count' },
+    ]);
 
-    expect(decl.name).toBe('Counter');
-    expect(decl.kind).toBe('component');
-    expect(decl.exportDefault).toBe(true);
-
-    // One @state field: count
-    expect(decl.fields).toHaveLength(1);
-    expect(decl.fields[0]?.name).toBe('count');
-    expect(decl.fields[0]?.kind).toBe('state');
-
-    // One getter: doubled
-    expect(decl.getters).toHaveLength(1);
-    expect(decl.getters[0]?.name).toBe('doubled');
-
-    // One effect method: watchCount
-    expect(decl.methods).toHaveLength(1);
-    expect(decl.methods[0]?.name).toBe('watchCount');
-    expect(decl.methods[0]?.kind).toBe('effect');
-
-    // render is present
-    expect(decl.render).toBeDefined();
-
-    // No diagnostics
-    expect(result.diagnostics).toHaveLength(0);
+    const meridianImport = result.imports.find((entry) => entry.moduleSpecifier === 'meridian');
+    expect(meridianImport?.namedBindings).toEqual([
+      { imported: 'Component', local: 'Component' },
+      { imported: 'state', local: 'state' },
+      { imported: 'effect', local: 'effect' },
+    ]);
   });
 
-  it('Test 2: missing use client emits M001', () => {
-    const src = `
-import { Component } from '@meridian/meridian';
-export class Foo extends Component { render() { return null; } }
-`;
-
-    const result = parseModule(src, 'Foo.ts');
-
-    expect(result.diagnostics.some((d) => d.code === 'M001')).toBe(true);
-  });
-
-  it('Test 3: missing render() emits M006', () => {
-    const src = `
+  it('extracts constructor params and valid @use linkage', () => {
+    const result = parseModule(
+      `
 'use client';
-import { Component } from '@meridian/meridian';
-export class Foo extends Component { }
-`;
+import { Component, use } from 'meridian';
+import { Debounce } from './Debounce';
 
-    const result = parseModule(src, 'Foo.ts');
-
-    expect(result.diagnostics.some((d) => d.code === 'M006')).toBe(true);
-  });
-
-  it('Test 4: missing resolve() on Primitive emits M007', () => {
-    const src = `
-'use client';
-import { Primitive } from '@meridian/meridian';
-export class Debounce extends Primitive<string> { }
-`;
-
-    const result = parseModule(src, 'Debounce.ts');
-
-    expect(result.diagnostics.some((d) => d.code === 'M007')).toBe(true);
-  });
-
-  it('Test 5: unsupported decorator emits M003', () => {
-    const src = `
-'use client';
-import { Component } from '@meridian/meridian';
-export class Foo extends Component {
-  @observable value = 0;
-  render() { return null; }
-}
-`;
-
-    const result = parseModule(src, 'Foo.ts');
-
-    expect(result.diagnostics.some((d) => d.code === 'M003')).toBe(true);
-  });
-
-  it('correctly classifies Primitive declarations', () => {
-    const src = `
-'use client';
-import { Primitive } from '@meridian/meridian';
-export class Debounce extends Primitive<string> {
-  resolve() { return 'hello'; }
-}
-`;
-
-    const result = parseModule(src, 'Debounce.ts');
-
-    expect(result.diagnostics).toHaveLength(0);
-    expect(result.declarations[0]?.kind).toBe('primitive');
-    expect(result.declarations[0]?.resolve).toBeDefined();
-  });
-
-  it('collects imports correctly', () => {
-    const src = `
-'use client';
-import { Component, state } from '@meridian/meridian';
-import React, { useState } from 'react';
-export class Foo extends Component { render() { return null; } }
-`;
-
-    const result = parseModule(src, 'Foo.ts');
-
-    const meridianImport = result.imports.find((i) => i.moduleSpecifier === '@meridian/meridian');
-    expect(meridianImport).toBeDefined();
-    expect(meridianImport?.namedBindings).toContain('Component');
-    expect(meridianImport?.namedBindings).toContain('state');
-
-    const reactImport = result.imports.find((i) => i.moduleSpecifier === 'react');
-    expect(reactImport?.defaultBinding).toBe('React');
-    expect(reactImport?.namedBindings).toContain('useState');
-  });
-
-  it('infers state dependencies in getters and methods', () => {
-    const src = `
-'use client';
-import { Component, state } from '@meridian/meridian';
-export default class Counter extends Component {
-  @state count = 0;
-  get doubled() { return this.count * 2; }
-  render() { return null; }
-}
-`;
-
-    const result = parseModule(src, 'Counter.ts');
-
-    const decl = result.declarations[0];
-    expect(decl).toBeDefined();
-    if (!decl) throw new Error('no declaration');
-
-    const doubled = decl.getters.find((g) => g.name === 'doubled');
-    expect(doubled).toBeDefined();
-    expect(doubled?.dependencies.some((d) => d.source === 'state' && d.name === 'count')).toBe(true);
-  });
-
-  it('extracts @effect.layout decorator correctly', () => {
-    const src = `
-'use client';
-import { Component, state } from '@meridian/meridian';
-export default class Foo extends Component {
-  @state x = 0;
-  @effect.layout
-  onMount() { console.log('mounted'); }
-  render() { return null; }
-}
-`;
-
-    const result = parseModule(src, 'Foo.ts');
-
-    expect(result.diagnostics).toHaveLength(0);
-    const onMount = result.declarations[0]?.methods.find((m) => m.name === 'onMount');
-    expect(onMount?.kind).toBe('layoutEffect');
-  });
-
-  it('extracts @use decorator with primitive name and factory', () => {
-    const src = `
-'use client';
-import { Component, use } from '@meridian/meridian';
-export default class Foo extends Component {
-  @use(Debounce, () => [300])
-  debounced;
-  render() { return null; }
-}
-`;
-
-    const result = parseModule(src, 'Foo.ts');
-
-    expect(result.diagnostics).toHaveLength(0);
-    const field = result.declarations[0]?.fields.find((f) => f.name === 'debounced');
-    expect(field?.kind).toBe('use');
-    expect(field?.useTarget?.primitiveName).toBe('Debounce');
-    expect(field?.useTarget?.argsFactoryBody).toContain('300');
-  });
-
-  it('M004: ServerComponent emits diagnostic', () => {
-    const src = `
-'use client';
-import { Component } from '@meridian/meridian';
-export class ServerComponent extends Component {
-  render() { return null; }
-}
-`;
-
-    const result = parseModule(src, 'Server.ts');
-
-    expect(result.diagnostics.some((d) => d.code === 'M004')).toBe(true);
-  });
-
-  it('extracts constructor params', () => {
-    const src = `
-'use client';
-import { Component } from '@meridian/meridian';
-export default class Foo extends Component {
-  constructor(private name: string, public age?: number) {
+export default class SearchBox extends Component<{ query: string }> {
+  constructor(private label: string, public delay?: number) {
     super();
   }
-  render() { return null; }
-}
-`;
 
-    const result = parseModule(src, 'Foo.ts');
+  @use(Debounce, () => [this.props.query, this.delay ?? 300])
+  debounced!: string;
+
+  render() {
+    return <div>{this.debounced}</div>;
+  }
+}
+`,
+      'SearchBox.tsx',
+    );
 
     expect(result.diagnostics).toHaveLength(0);
-    const ctor = result.declarations[0]?.constructor;
-    expect(ctor).toBeDefined();
-    expect(ctor?.params).toHaveLength(2);
+
+    const declaration = result.declarations[0];
+    expect(declaration?.ctor?.params.map((param) => param.name)).toEqual(['label', 'delay']);
+    expect(declaration?.fields[0]?.kind).toBe('use');
+    expect(declaration?.fields[0]?.useTarget?.primitiveName).toBe('Debounce');
+    expect(declaration?.fields[0]?.useTarget?.importSource).toBe('./Debounce');
+  });
+
+  it('emits M001 when a Meridian module omits use client', () => {
+    const result = parseModule(
+      `
+import { Component } from 'meridian';
+
+export class Foo extends Component {
+  render() {
+    return null;
+  }
+}
+`,
+      'Foo.tsx',
+    );
+
+    expect(result.diagnostics.some((diagnostic) => diagnostic.code === 'M001')).toBe(true);
+  });
+
+  it('emits M002 for decorated inheritance through a local base class', () => {
+    const result = parseModule(
+      `
+'use client';
+import { Component } from 'meridian';
+
+class Base extends Component {
+  render() {
+    return null;
+  }
+}
+
+export default class Child extends Base {
+  render() {
+    return null;
+  }
+}
+`,
+      'Inheritance.tsx',
+    );
+
+    expect(result.diagnostics.some((diagnostic) => diagnostic.code === 'M002')).toBe(true);
+  });
+
+  it('emits M003 for unsupported decorators', () => {
+    const result = parseModule(
+      `
+'use client';
+import { Component } from 'meridian';
+
+export default class Foo extends Component {
+  @observable value = 0;
+
+  render() {
+    return null;
+  }
+}
+`,
+      'Foo.tsx',
+    );
+
+    expect(result.diagnostics.some((diagnostic) => diagnostic.code === 'M003')).toBe(true);
+  });
+
+  it('emits M004 for first-class server component authoring', () => {
+    const result = parseModule(
+      `
+'use client';
+import { ServerComponent } from 'meridian';
+
+export default class ProductPage extends ServerComponent {
+  resolve() {
+    return null;
+  }
+}
+`,
+      'ServerComponent.tsx',
+    );
+
+    expect(result.diagnostics.some((diagnostic) => diagnostic.code === 'M004')).toBe(true);
+  });
+
+  it('emits M006 and M007 when required lifecycle entrypoints are missing', () => {
+    const componentResult = parseModule(
+      `
+'use client';
+import { Component } from 'meridian';
+
+export class Foo extends Component {}
+`,
+      'Foo.tsx',
+    );
+
+    const primitiveResult = parseModule(
+      `
+'use client';
+import { Primitive } from 'meridian';
+
+export class UseThing extends Primitive<string> {}
+`,
+      'UseThing.ts',
+    );
+
+    expect(componentResult.diagnostics.some((diagnostic) => diagnostic.code === 'M006')).toBe(true);
+    expect(primitiveResult.diagnostics.some((diagnostic) => diagnostic.code === 'M007')).toBe(true);
+  });
+
+  it('emits M008 for dynamic dependency access', () => {
+    const result = parseModule(
+      `
+'use client';
+import { Component, state, effect } from 'meridian';
+
+export default class Foo extends Component {
+  @state count = 0;
+  @state key = 'count';
+
+  @effect
+  watch() {
+    console.log(this[this.key]);
+  }
+
+  render() {
+    return null;
+  }
+}
+`,
+      'DynamicDeps.tsx',
+    );
+
+    expect(result.diagnostics.some((diagnostic) => diagnostic.code === 'M008')).toBe(true);
+  });
+
+  it('emits M009 when a module contains multiple Meridian declarations', () => {
+    const result = parseModule(
+      `
+'use client';
+import { Component } from 'meridian';
+
+export class First extends Component {
+  render() {
+    return null;
+  }
+}
+
+export class Second extends Component {
+  render() {
+    return null;
+  }
+}
+`,
+      'Multi.tsx',
+    );
+
+    expect(result.diagnostics.some((diagnostic) => diagnostic.code === 'M009')).toBe(true);
+  });
+
+  it('emits M010 for reactive private-field usage', () => {
+    const result = parseModule(
+      `
+'use client';
+import { Component } from 'meridian';
+
+export default class Foo extends Component {
+  #cache = 1;
+
+  get cached() {
+    return this.#cache;
+  }
+
+  render() {
+    return <div>{this.cached}</div>;
+  }
+}
+`,
+      'PrivateReactive.tsx',
+    );
+
+    expect(result.diagnostics.some((diagnostic) => diagnostic.code === 'M010')).toBe(true);
+  });
+
+  it('emits M011 for unsupported @use argument factories', () => {
+    const result = parseModule(
+      `
+'use client';
+import { Component, use } from 'meridian';
+import { Debounce } from './Debounce';
+
+export default class Foo extends Component {
+  @use(Debounce, makeArgs())
+  debounced!: string;
+
+  render() {
+    return null;
+  }
+}
+`,
+      'UnsupportedUse.tsx',
+    );
+
+    expect(result.diagnostics.some((diagnostic) => diagnostic.code === 'M011')).toBe(true);
   });
 });

@@ -1,4 +1,4 @@
-import { Component } from '@meridian/meridian';
+import { Component } from 'meridian';
 
 // Missing 'use client' and using ServerComponent name
 export default class ServerComponent extends Component {

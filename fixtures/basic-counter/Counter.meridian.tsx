@@ -1,5 +1,5 @@
 'use client';
-import { Component, state, effect } from '@meridian/meridian';
+import { Component, state, effect } from 'meridian';
 import type React from 'react';
 
 export default class Counter extends Component<{ initial: number }> {

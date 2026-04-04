@@ -1,45 +1,111 @@
-import { describe, it, expect } from 'vitest';
-import { compileModule } from '@meridian/compiler';
+import { existsSync, mkdtempSync, readFileSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { afterEach, describe, expect, it } from 'vitest';
+import { build } from './build.js';
+import { resolveConfig } from './config.js';
 
-describe('compileModule integration', () => {
-  it('compiles a valid counter component', () => {
-    const src = `
+const tempDirs: string[] = [];
+
+function makeTempProject(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'meridian-cli-'));
+  tempDirs.push(dir);
+  mkdirSync(join(dir, 'src'), { recursive: true });
+  return dir;
+}
+
+afterEach(() => {
+  while (tempDirs.length > 0) {
+    const dir = tempDirs.pop();
+    if (dir) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+});
+
+describe('build', () => {
+  it('compiles only Meridian source files from the configured source subtree', async () => {
+    const cwd = makeTempProject();
+
+    writeFileSync(
+      join(cwd, 'src', 'Counter.meridian.tsx'),
+      `
 'use client';
-import { Component, state } from '@meridian/meridian';
+import { Component, state } from 'meridian';
+
 export default class Counter extends Component<{ initial: number }> {
   @state count = this.props.initial;
-  render() { return <div>{count}</div>; }
+
+  render() {
+    return <div>{this.count}</div>;
+  }
 }
-`;
-    const result = compileModule(src, 'Counter.tsx');
-    expect(result.diagnostics.filter(d => d.severity === 'error')).toHaveLength(0);
-    expect(result.output).toContain('useState');
-    expect(result.output).toContain("'use client'");
-  });
+`,
+      'utf8',
+    );
 
-  it('returns errors for missing use client', () => {
-    const src = `
-import { Component } from '@meridian/meridian';
-export class Foo extends Component { render() { return null; } }
-`;
-    const result = compileModule(src, 'Foo.tsx');
-    expect(result.diagnostics.some(d => d.code === 'M001')).toBe(true);
-    expect(result.output).toBeUndefined();
-  });
-
-  it('compiles a primitive to a custom hook', () => {
-    const src = `
+    writeFileSync(join(cwd, 'src', 'plain.ts'), 'export const value = 1;\n', 'utf8');
+    mkdirSync(join(cwd, 'src', 'node_modules'), { recursive: true });
+    writeFileSync(
+      join(cwd, 'src', 'node_modules', 'Ignored.tsx'),
+      `
 'use client';
-import { Primitive, state } from '@meridian/meridian';
-export class Debounce extends Primitive<string> {
-  constructor(private value: string, private delay: number) { super(); }
-  @state debouncedValue = '';
-  resolve() { return this.debouncedValue; }
+import { Component } from 'meridian';
+export default class Ignored extends Component { render() { return null; } }
+`,
+      'utf8',
+    );
+
+    const config = resolveConfig({ cwd });
+    const result = await build(config);
+    const outputFile = join(cwd, '.meridian/generated', 'Counter.meridian.tsx');
+
+    expect(result).toEqual({
+      compiled: 1,
+      copied: 0,
+      errors: 0,
+      warnings: 0,
+    });
+    expect(existsSync(outputFile)).toBe(true);
+    expect(readFileSync(outputFile, 'utf8')).toContain('useState');
+    expect(existsSync(join(cwd, '.meridian/generated', 'plain.ts'))).toBe(false);
+    expect(existsSync(join(cwd, '.meridian/generated', 'node_modules', 'Ignored.tsx'))).toBe(false);
+  });
+
+  it('surfaces compiler diagnostics as build errors', async () => {
+    const cwd = makeTempProject();
+
+    writeFileSync(
+      join(cwd, 'src', 'Broken.meridian.tsx'),
+      `
+import { Component } from 'meridian';
+
+export default class Broken extends Component {
+  render() {
+    return null;
+  }
 }
-`;
-    const result = compileModule(src, 'Debounce.tsx');
-    expect(result.diagnostics.filter(d => d.severity === 'error')).toHaveLength(0);
-    expect(result.output).toContain('function useDebounce');
-    expect(result.output).toContain('useState');
+`,
+      'utf8',
+    );
+
+    const result = await build(resolveConfig({ cwd }));
+
+    expect(result.compiled).toBe(0);
+    expect(result.errors).toBeGreaterThan(0);
+    expect(existsSync(join(cwd, '.meridian/generated', 'Broken.meridian.tsx'))).toBe(false);
+  });
+
+  it('copies passthrough assets only when copyFiles is enabled', async () => {
+    const cwd = makeTempProject();
+    mkdirSync(join(cwd, 'src', 'assets'), { recursive: true });
+    writeFileSync(join(cwd, 'src', 'assets', 'logo.svg'), '<svg />\n', 'utf8');
+
+    const result = await build(resolveConfig({ cwd, copyFiles: true }));
+    const copiedAsset = join(cwd, '.meridian/generated', 'assets', 'logo.svg');
+
+    expect(result.copied).toBe(1);
+    expect(existsSync(copiedAsset)).toBe(true);
+    expect(readFileSync(copiedAsset, 'utf8')).toContain('<svg />');
   });
 });

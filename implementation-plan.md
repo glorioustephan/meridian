@@ -1,8 +1,10 @@
 # Meridian Implementation Plan
 
-This document translates [rfc.md](./rfc.md) into a concrete, multi-phase plan to build Meridian v1.
+This document translates [rfc.md](./rfc.md) into a concrete, status-aware implementation plan for Meridian v1.
 
-All implementation is assumed to be in **TypeScript**, using ESM modules and strict type-checking throughout.
+Status date: April 4, 2026
+
+All implementation is assumed to be in TypeScript, using ESM modules and strict type-checking throughout.
 
 ---
 
@@ -17,7 +19,7 @@ Meridian v1 should deliver the narrowed contract defined in the RFC:
 - explicit `'use client'` module boundaries
 - compatibility with React 19 and Next.js App Router through generated standard React code
 
-Meridian v1 should **not** attempt to ship:
+Meridian v1 should not attempt to ship:
 
 - runtime Proxy tracking
 - `ServerComponent`
@@ -30,9 +32,43 @@ Meridian v1 should **not** attempt to ship:
 
 ---
 
-## 2. Repository Plan
+## 2. Current Status
 
-Use a TypeScript monorepo from the start so the compiler, runtime API, and CLI can evolve independently.
+The repo is no longer at the “initial scaffold” stage. The current implementation already covers most of the v1 compiler path.
+
+### Verified today
+
+- `pnpm build`
+- `pnpm test`
+- `pnpm smoke:compiler-dist`
+- `pnpm build:fixture:next`
+
+### Implemented
+
+- workspace package split across `meridian`, `@meridian/compiler`, and `@meridian/cli`
+- marker runtime API with uncompiled-source guard errors
+- AST-backed parse -> validate -> lower compiler pipeline
+- explicit diagnostics for unsupported v1 patterns
+- component lowering for `@state`, `@ref`, getters, plain methods, and `render()`
+- effect lowering for `@effect` and `@effect.layout` with static dependency inference
+- primitive lowering and `@use(...)` wiring
+- CLI build and watch commands
+- real Next.js App Router fixture that consumes generated output
+- CI workflow for package build, tests, built-package smoke check, and Next fixture build
+
+### Not finished
+
+- Strict Mode render-level validation with a real React renderer
+- watch-mode tests and stronger incremental rebuild guarantees
+- `next dev` and hydration/runtime validation for the Next fixture
+- React Compiler-enabled validation
+- release prep, packaging, docs hardening, and alpha publication work
+
+---
+
+## 3. Repository Plan
+
+The repo structure should now be described as it exists, not as a blank-slate target.
 
 ```text
 /
@@ -41,6 +77,8 @@ Use a TypeScript monorepo from the start so the compiler, runtime API, and CLI c
   tsconfig.base.json
   tsconfig.json
   vitest.config.ts
+  scripts/
+    smoke-compiler-dist.mjs
   packages/
     meridian/
       src/
@@ -56,10 +94,11 @@ Use a TypeScript monorepo from the start so the compiler, runtime API, and CLI c
         compile.ts
         diagnostics.ts
         ir.ts
+        ast.ts
+        validate.ts
         parser/
         analyze/
         transform/
-        codegen/
     cli/
       src/
         index.ts
@@ -74,13 +113,16 @@ Use a TypeScript monorepo from the start so the compiler, runtime API, and CLI c
     invalid-inheritance/
     invalid-server-component/
     next-app-router/
+  .github/
+    workflows/
+      ci.yml
 ```
 
-### Core package roles
+### Package roles
 
-- `packages/meridian`: author-facing package with base classes, decorator factories, shared types, and runtime guards.
-- `packages/compiler`: AST parser, analyzer, diagnostics, IR builder, and code generator.
-- `packages/cli`: precompile command used before `next dev` / `next build`.
+- `packages/meridian`: author-facing package with base classes, decorator factories, shared types, and runtime guards
+- `packages/compiler`: AST parser, semantic validator, IR builder, and React code generator
+- `packages/cli`: precompile command used before `next dev` or `next build`
 
 ### Technical defaults
 
@@ -88,168 +130,19 @@ Use a TypeScript monorepo from the start so the compiler, runtime API, and CLI c
 - module format: ESM
 - TypeScript mode: `strict: true`, `noUncheckedIndexedAccess: true`, `exactOptionalPropertyTypes: true`
 - test runner: `vitest`
-- React rendering tests: `@testing-library/react`
-- AST stack: `@babel/parser`, `@babel/traverse`, `@babel/types`, `@babel/generator`
+- AST stack: `@babel/parser`, `@babel/types`, `@babel/generator`
 
-The initial compiler should be a TypeScript package that consumes TS/TSX source and emits TSX. Do not start with a Babel plugin. Ship the compiler as a library first, then wrap it in the CLI.
-
----
-
-## 3. Core TypeScript Contracts
-
-These are the core types to stabilize early.
-
-```ts
-// packages/compiler/src/ir.ts
-export type MeridianBaseKind = 'component' | 'primitive';
-
-export interface MeridianModuleIR {
-  sourceFile: string;
-  clientDirective: boolean;
-  imports: ImportIR[];
-  declarations: MeridianDeclarationIR[];
-  diagnostics: MeridianDiagnostic[];
-}
-
-export interface MeridianDeclarationIR {
-  name: string;
-  kind: MeridianBaseKind;
-  exportDefault: boolean;
-  propsType?: string;
-  fields: FieldIR[];
-  getters: GetterIR[];
-  methods: MethodIR[];
-  render?: RenderIR;
-  resolve?: ResolveIR;
-  constructor?: ConstructorIR;
-}
-
-export interface FieldIR {
-  name: string;
-  kind: 'state' | 'ref' | 'use' | 'plain';
-  initializer?: string;
-  useTarget?: UseTargetIR;
-  location: SourceLocationIR;
-}
-
-export interface GetterIR {
-  name: string;
-  body: string;
-  dependencies: DependencyRef[];
-  location: SourceLocationIR;
-}
-
-export interface MethodIR {
-  name: string;
-  kind: 'effect' | 'layoutEffect' | 'method';
-  body: string;
-  async: boolean;
-  dependencies: DependencyRef[];
-  location: SourceLocationIR;
-}
-
-export interface UseTargetIR {
-  primitiveName: string;
-  argsFactoryBody: string;
-}
-
-export interface DependencyRef {
-  source: 'state' | 'prop' | 'getter';
-  name: string;
-}
-
-export interface MeridianDiagnostic {
-  code:
-    | 'M001'
-    | 'M002'
-    | 'M003'
-    | 'M004'
-    | 'M005'
-    | 'M006'
-    | 'M007'
-    | 'M008';
-  severity: 'error' | 'warning';
-  message: string;
-  file: string;
-  line: number;
-  column: number;
-}
-```
-
-```ts
-// packages/meridian/src/types.ts
-export abstract class Component<Props = {}> {
-  declare readonly props: Readonly<Props>;
-  abstract render(): React.ReactNode;
-}
-
-export abstract class Primitive<T> {
-  abstract resolve(): T;
-}
-
-export interface StateDecorator {
-  (value: undefined, context: ClassFieldDecoratorContext): void;
-}
-
-export interface RefDecorator {
-  (value: undefined, context: ClassFieldDecoratorContext): void;
-}
-
-export interface EffectDecorator {
-  (value: Function, context: ClassMethodDecoratorContext): void;
-  layout: (value: Function, context: ClassMethodDecoratorContext) => void;
-}
-
-export interface UseDecoratorFactory {
-  <TArgs extends unknown[]>(
-    primitive: new (...args: TArgs) => Primitive<unknown>,
-    argsFactory: () => TArgs,
-  ): StateDecorator;
-}
-```
-
-The runtime package should keep these implementations deliberately small. The compiler is the real feature.
+The compiler is the product. The runtime package should remain deliberately small.
 
 ---
 
-## 4. Phase Plan
+## 4. Current Contracts
 
-## Phase 0 - Workspace and Tooling Foundation
+This section replaces the older string-backed IR sketch with the contracts Meridian actually relies on today.
 
-### Objective
+### Public API
 
-Create the monorepo, TypeScript configuration, test harness, and package boundaries so subsequent phases only add behavior.
-
-### Deliverables
-
-- root workspace config
-- base `tsconfig`
-- package skeletons for `meridian`, `compiler`, and `cli`
-- `vitest` setup for unit and fixture tests
-- lint/format baseline
-- fixture directory layout
-
-### Key decisions
-
-- use TypeScript project references for fast incremental builds
-- keep emitted code as TS/TSX in early phases to simplify debugging
-- adopt ESM everywhere; do not mix CJS in the CLI
-
-### Exit criteria
-
-- `pnpm install`
-- `pnpm build` type-checks all packages
-- `pnpm test` runs an empty test suite successfully
-
----
-
-## Phase 1 - Public API Scaffold
-
-### Objective
-
-Ship the author-facing TypeScript surface with the exact v1 API, but without any real lowering yet.
-
-### Scope
+Supported v1 authoring API:
 
 - `Component<Props>`
 - `Primitive<T>`
@@ -259,346 +152,332 @@ Ship the author-facing TypeScript surface with the exact v1 API, but without any
 - `@effect.layout`
 - `@use`
 
-### Implementation
+Deferred APIs remain deferred and should stay out of the public surface.
 
-- add strongly typed base classes in `packages/meridian`
-- implement decorators as marker decorators
-- if Meridian-authored files execute without compilation, throw a runtime guard error with a clear message:
+### Compiler pipeline
 
-```ts
-throw new Error(
-  'Meridian source must be compiled before execution. Run the Meridian compiler or CLI first.',
-);
-```
+The compiler currently follows this order:
 
-- export all public symbols from `packages/meridian/src/index.ts`
+1. Parse source into AST-backed module IR
+2. Validate semantics and collect diagnostics
+3. Analyze dependency graphs
+4. Lower valid declarations into standard React TSX
 
-### Exit criteria
+Lowering only runs on valid IR.
 
-- TypeScript authoring examples from the RFC compile at the type level
-- uncompiled execution fails loudly and predictably
-- there is no accidental support for deferred APIs
+### IR shape
 
----
+The IR is AST-backed, not string-backed:
 
-## Phase 2 - AST Parsing and Semantic Validation
+- fields carry initializer expressions
+- methods and getters carry `BlockStatement` bodies
+- method and constructor params preserve declared syntax
+- module IR includes local-class metadata for inheritance validation
 
-### Objective
+The declaration contract is one Meridian declaration per source module in v1.
 
-Build the compiler front-end that finds Meridian classes, validates them against the RFC, and produces typed IR.
+### Diagnostics
 
-### Scope
+The active diagnostic set is:
 
-- parse `.ts` and `.tsx`
-- detect `'use client'`
-- detect classes extending `Component` or `Primitive`
-- collect decorators, fields, getters, methods, `render()`, `resolve()`, and constructor
-- reject unsupported constructs before codegen
-
-### Required diagnostics
-
-- missing `'use client'` in a Meridian component module
-- decorated inheritance
-- unsupported decorator names
-- `ServerComponent` usage
-- `@raw` usage
-- missing `render()` on `Component`
-- missing `resolve()` on `Primitive`
-- multiple Meridian declarations per default-export module if that complicates early codegen
-
-### Exit criteria
-
-- fixture tests build IR successfully for valid samples
-- invalid fixtures produce exact diagnostic codes and source locations
-- no code generation happens yet
+- `M001` missing `'use client'`
+- `M002` decorated inheritance
+- `M003` unsupported decorator
+- `M004` `ServerComponent` authoring
+- `M005` `@raw`
+- `M006` missing `render()`
+- `M007` missing `resolve()`
+- `M008` dynamic dependency access
+- `M009` multiple Meridian declarations per module
+- `M010` reactive `#private` usage
+- `M011` unsupported or unresolved `@use(...)`
+- `M012` unsupported state mutation form
 
 ---
 
-## Phase 3 - Component Lowering
+## 5. Phase Plan
 
-### Objective
+The original phase order still makes sense, but the statuses have changed. The work below is split into completed, mostly complete, and remaining phases.
 
-Generate React function components from valid `Component<Props>` classes.
+### Phase 0 - Workspace and Tooling Foundation
 
-### Scope
+Status: Complete
 
-- `@state`
-- `@ref`
-- pure getters
-- plain methods
-- `render()`
+Delivered:
 
-### Lowering rules
+- pnpm workspace
+- TypeScript project references
+- package skeletons
+- strict base tsconfig
+- Vitest setup
+- fixture directories
 
-- `@state foo = expr` -> `const [foo, setFoo] = useState(() => expr)`
-- `@ref el` -> `const el = useRef(...)`
-- getter access -> inline local derived expression or helper function
-- method access from JSX -> local lexical function
-- `this.foo = next` where `foo` is state -> `setFoo(next)` or functional form when required
-- `this.props.bar` -> `props.bar`
+Exit gate:
 
-### Hard constraints
+- `pnpm install`
+- `pnpm build`
+- `pnpm test`
 
-- method rewriting must be syntax-aware, not string replacement
-- only support direct `this.stateField` assignment in v1
-- reject mutation forms that are ambiguous to rewrite safely
+### Phase 1 - Public API Scaffold
 
-### Exit criteria
+Status: Complete
 
-- the counter example from the RFC lowers to valid React TSX
+Delivered:
+
+- strongly typed `Component<Props>` and `Primitive<T>`
+- marker decorators
+- uncompiled execution guard
+- public exports from `packages/meridian/src/index.ts`
+
+### Phase 2 - AST Parsing and Semantic Validation
+
+Status: Complete
+
+Delivered:
+
+- `.ts` / `.tsx` parsing
+- `'use client'` detection
+- Meridian class discovery
+- AST-backed IR extraction
+- semantic validation
+- explicit diagnostic codes through `M012`
+
+Notes:
+
+- the current implementation is stricter than the original phase text
+- multiple Meridian declarations are now rejected deterministically
+
+### Phase 3 - Component Lowering
+
+Status: Mostly complete
+
+Delivered:
+
+- `@state` lowering
+- `@ref` lowering
+- getter lowering
+- method lowering
+- syntax-aware `this` rewriting
+- `render()` lowering
+
+Remaining:
+
+- add real render-level tests under React Strict Mode
+- prove behavior with a renderer instead of string-output-only checks
+
+Exit criteria for full completion:
+
+- the counter example lowers to valid React TSX
 - generated code renders correctly in tests
 - Strict Mode test proves state lives in hooks, not on a retained class instance
 
----
+### Phase 4 - Effect Lowering and Static Dependency Inference
 
-## Phase 4 - Effect Lowering and Static Dependency Inference
+Status: Complete
 
-### Objective
+Delivered:
 
-Support `@effect` and `@effect.layout` with static dependency inference.
+- `@effect` lowering to `useEffect`
+- `@effect.layout` lowering to `useLayoutEffect`
+- direct `this.props.x` and `this.stateField` tracking
+- recursive getter flattening
+- dynamic-access rejection
+- async effect lowering through inner async functions
 
-### Scope
+Known v1 behavior:
 
-- direct reads of `this.props.x`
-- direct reads of `this.stateField`
-- recursive getter dependencies
-- cleanup function returns
-- async effect methods, if they lower to an inner async function rather than async effect callbacks directly
+- dynamic access fails instead of falling back
+- reactive private reads fail instead of compiling
 
-### Analyzer rules
+### Phase 5 - Primitive and `@use` Lowering
 
-- build a dependency graph from getters and effect methods
-- flatten getter dependencies into concrete state/prop reads
-- reject unresolved dynamic access
+Status: Complete
 
-### Rejections in v1
+Delivered:
 
-- `this[key]`
-- `for (const k in this)`
-- `Object.keys(this)`
-- reading `#private` values in getters or effect methods
-- circular getter dependency graphs
+- primitive lowering to custom hooks
+- constructor parameter capture
+- primitive-local state/getter/effect lowering
+- `resolve()` hook return value
+- top-level `@use(...)` hook calls in source order
 
-### Exit criteria
+Remaining:
 
-- valid effect fixtures produce stable dependency arrays
-- invalid dynamic dependency fixtures fail with actionable diagnostics
-- layout effects lower to `useLayoutEffect`
+- none required for v1 core
 
----
+### Phase 6 - CLI and Precompile Pipeline
 
-## Phase 5 - Primitive and `@use` Lowering
+Status: Mostly complete
 
-### Objective
-
-Compile `Primitive<T>` classes into custom hooks and wire them into `Component` classes through `@use`.
-
-### Scope
-
-- constructor argument capture
-- primitive-local `@state`, `@ref`, getters, and effects
-- `resolve()` return value
-- `@use(Primitive, argsFactory)` lowering in source order
-
-### Implementation
-
-- lower each primitive to a generated `function use<PrimitiveName>(...)`
-- compile constructor parameters into hook parameters
-- compile `resolve()` as the hook return value
-- in a component, replace the `@use` field with a top-level call to the generated hook
-
-### Constraints
-
-- `argsFactory` must be statically analyzable
-- primitive hook order must be deterministic
-- primitives remain client-only in v1
-
-### Exit criteria
-
-- debounce-style primitive fixture works end to end
-- primitive hook output is stable across re-renders
-- generated component code keeps all hook calls at top level
-
----
-
-## Phase 6 - CLI and Precompile Pipeline
-
-### Objective
-
-Ship a usable TypeScript CLI that turns Meridian source into generated React files before the app build runs.
-
-### CLI commands
-
-```ts
-interface MeridianCliCommand {
-  name: 'build' | 'watch';
-  cwd?: string;
-  inputDir?: string;
-  outDir?: string;
-  extensions?: Array<'ts' | 'tsx'>;
-}
-```
-
-### Planned behavior
+Delivered:
 
 - `meridian build`
-  - scans input files
-  - compiles Meridian modules
-  - writes generated TSX to an output directory
-  - copies through non-Meridian files unchanged or via configurable passthrough
 - `meridian watch`
-  - incremental rebuild on file changes
-  - stable diagnostics in watch mode
+- generated output rooted at `.meridian/generated`
+- source subtree defaults
+- excluded-directory handling
+- configurable passthrough copying
+- build-failing diagnostics
 
-### Output strategy
+Remaining:
 
-- default generated directory: `.meridian/generated`
-- preserve relative module paths under the output directory
-- generate source maps in development mode
+- watch-mode tests
+- stronger guarantees around incremental rebuild behavior
+- source map support for generated output, if still desired for v1
 
-### Exit criteria
+Clarification:
 
-- a sample app can import generated output
-- watch mode rebuilds a changed Meridian file correctly
-- diagnostics fail the build on invalid source
+- the current watch implementation is debounced and filtered
+- it is not yet a fully incremental compiler
 
----
+### Phase 7 - Next.js App Router Fixture
 
-## Phase 7 - Next.js App Router Fixture
+Status: Mostly complete
 
-### Objective
+Delivered:
 
-Prove the narrowed integration story against a real Next.js App Router app.
+- real App Router fixture in `fixtures/next-app-router`
+- Meridian client child imported from generated output
+- explicit `'use client'` Meridian module
+- successful `next build`
+- documented precompile + Next workflow
 
-### Fixture requirements
+Remaining:
 
-- App Router project in `fixtures/next-app-router`
-- a standard Server Component page imports a compiled Meridian client child
-- the Meridian source file includes explicit `'use client'`
-- the fixture build consumes generated TSX, not raw Meridian source
+- validate `next dev`
+- validate hydration/runtime behavior in-browser
 
-### Validation
+### Phase 8 - React Compiler Validation and Stabilization
 
-- `next dev` works against generated output
-- `next build` succeeds
-- hydration works for the Meridian client child
-- no claim of custom RSC support is required
+Status: Not started
 
-### Exit criteria
+Objective:
 
-- green end-to-end Next.js fixture
-- documented developer workflow for precompile plus Next.js
+- prove generated Meridian output remains correct under React Compiler-enabled builds
+- document React Compiler positioning beyond the RFC summary
 
----
+Planned deliverables:
 
-## Phase 8 - React Compiler Validation and Stabilization
+- fixture or example build with React Compiler enabled
+- compatibility notes in docs
+- confirmation that Meridian correctness does not depend on generated memoization
 
-### Objective
+Current signal:
 
-Confirm Meridian output remains correct and compatible when React Compiler optimization is enabled.
+- Meridian already emits plain derived expressions and local functions instead of default `useMemo` or `useCallback`
+- [docs/guide/react-compiler.md](./docs/guide/react-compiler.md) still needs real content
 
-### Scope
+### Phase 9 - v1 Hardening and Release Prep
 
-- build generated fixtures with React Compiler enabled
-- verify correctness does not depend on `useMemo` or `useCallback` being emitted by Meridian
-- measure whether any generated patterns should be adjusted for readability or compiler friendliness
+Status: Not started
 
-### Exit criteria
+Objective:
 
-- compiler-enabled builds pass
-- no Meridian codegen rule depends on manual memoization by default
-- v1 limitations are finalized in docs and diagnostics
+- turn the prototype into a reproducible v1 alpha
 
----
+Planned deliverables:
 
-## Phase 9 - v1 Hardening and Release Prep
-
-### Objective
-
-Turn the prototype into a shippable v1 alpha.
-
-### Scope
-
-- stable error codes and docs
-- install docs and CLI docs
-- publish configuration for all packages
+- stable docs for install and usage
+- release packaging for all packages
 - changelog and versioning policy
-- additional regression fixtures
-
-### Exit criteria
-
-- alpha release candidate published
-- example app and fixture docs are reproducible from a clean checkout
-- unsupported features are explicitly documented, not implied
+- more regression fixtures
+- clean example-from-scratch workflow
 
 ---
 
-## 5. Test Matrix
+## 6. Test Matrix
 
-Translate the RFC test plan into concrete automated coverage.
+This section tracks both current coverage and missing coverage.
 
-### Unit tests
+### Currently covered
 
 - IR extraction for valid `Component` modules
 - IR extraction for valid `Primitive` modules
 - decorator recognition
 - dependency graph resolution
 - mutation rewrite for direct state assignment
+- negative diagnostics for:
+  - dynamic dependency inference
+  - decorated inheritance
+  - reactive `#private` usage
+  - `@raw`
+  - `ServerComponent`
+  - missing `'use client'`
+  - missing `render()`
+  - missing `resolve()`
+  - multiple Meridian declarations
+  - invalid `@use(...)`
+- generated output tests for:
+  - basic counter lowering
+  - layout effect lowering
+  - primitive debounce-style lowering
+  - top-level hook ordering through component and primitive lowering tests
+- CLI build integration
+- Next.js App Router build integration
+- built-compiler smoke test
 
-### Negative fixture tests
+### Still missing
 
-- dynamic dependency inference
-- decorated inheritance
-- reactive `#private` usage
-- `@raw`
-- `ServerComponent`
-- missing `'use client'`
-- missing `render()`
-- missing `resolve()`
-
-### Generated output tests
-
-- basic counter render
-- effect cleanup behavior
-- layout effect lowering
-- primitive debounce behavior
-- top-level hook ordering
-
-### Integration tests
-
-- CLI build
-- CLI watch
-- Next.js App Router fixture
-- React Compiler-enabled build
-
----
-
-## 6. Phase Gates
-
-Use these rules to keep scope under control.
-
-- Do not start `Resource<T>` before Phase 9 and a separate RFC.
-- Do not start `ServerComponent` authoring before the Next.js fixture is stable and Meridian's client story is proven.
-- Do not add runtime dependency tracking if static inference becomes painful; add explicit diagnostics first.
-- Do not add decorator modifiers for advanced React hooks in v1.
-- Do not start a native SWC transform before the TypeScript compiler package and CLI are stable.
+- React render tests under Strict Mode
+- watch-mode tests
+- `next dev` validation
+- hydration/runtime interaction tests for the Next fixture
+- React Compiler-enabled build validation
 
 ---
 
-## 7. First Build Order
+## 7. Plan and RFC Alignment
 
-If implementation starts immediately, the first sequence should be:
+The plan should stay narrower than earlier drafts and match the RFC exactly where v1 boundaries matter.
 
-1. Phase 0
-2. Phase 1
-3. Phase 2
-4. Phase 3
-5. Phase 4
-6. Phase 5
-7. Phase 6
-8. Phase 7
-9. Phase 8
-10. Phase 9
+### Aligned with the RFC
 
-The first meaningful milestone is the end of **Phase 4**: a Meridian `Component` that compiles to React TSX with `@state`, getters, and `@effect`, plus failing diagnostics for unsupported patterns.
+- classes are authoring syntax, not runtime identity
+- dependency inference is static or the build fails
+- client boundaries are explicit at the module level
+- `Primitive<T>` is the reusable hook abstraction
+- `ServerComponent` and `Resource<T>` remain deferred
+- generated output is minimal idiomatic React code
 
+### Places the old plan drifted and are now corrected
+
+- the old plan described string-backed IR; the implementation is AST-backed
+- the old plan stopped diagnostics at `M008`; the implementation now uses `M001` through `M012`
+- the old plan treated multi-declaration handling as optional; v1 now rejects it directly
+- the old plan described a future `codegen/` layer that does not exist in the repo; current code lives under `transform/`
+
+### Remaining delta from the RFC
+
+- the RFC calls for correctness under React Compiler-enabled builds; that validation has not been implemented yet
+- the RFC calls for a Next.js App Router fixture; build-time coverage exists, but dev/hydration verification is still missing
+- the RFC test plan asks for a Strict Mode ownership proof; that has not been added yet
+
+---
+
+## 8. Phase Gates
+
+These rules still apply:
+
+- do not start `Resource<T>` before a separate RFC
+- do not start `ServerComponent` authoring before Meridian's client story is fully proven
+- do not add runtime dependency tracking if static inference becomes painful; add diagnostics first
+- do not add decorator modifiers for advanced React hooks in v1
+- do not start a native SWC transform before the compiler package, CLI, and React Compiler validation are stable
+
+Additional gate:
+
+- do not broaden the public API until Phase 8 is complete and the current v1 behavior is documented
+
+---
+
+## 9. Immediate Next Work
+
+The highest-value next sequence is:
+
+1. add Strict Mode render tests with a real React renderer
+2. add watch-mode tests for the CLI
+3. validate `next dev` and hydration behavior for the Next fixture
+4. implement React Compiler-enabled validation and documentation
+5. begin release hardening only after the above are green
+
+The next meaningful milestone is the completion of Phase 8: Meridian should have a proven compiler pipeline, proven Next.js App Router integration, and explicit evidence that React Compiler optimization does not change correctness.

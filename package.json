@@ -4,7 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "build": "pnpm -r run build",
+    "build": "pnpm --filter './packages/*' -r run build",
+    "build:fixture:next": "pnpm --dir ./fixtures/next-app-router build",
+    "smoke:compiler-dist": "node ./scripts/smoke-compiler-dist.mjs",
+    "check": "pnpm build && pnpm test && pnpm smoke:compiler-dist",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint .",

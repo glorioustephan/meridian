@@ -1,0 +1,56 @@
+name: React Compiler
+
+on:
+  pull_request:
+    paths:
+      - 'fixtures/next-app-router/**'
+      - 'packages/cli/**'
+      - 'packages/compiler/**'
+      - 'packages/meridian/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'vitest.react-compiler.config.ts'
+      - '.github/workflows/react-compiler.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'fixtures/next-app-router/**'
+      - 'packages/cli/**'
+      - 'packages/compiler/**'
+      - 'packages/meridian/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'vitest.react-compiler.config.ts'
+      - '.github/workflows/react-compiler.yml'
+  workflow_dispatch:
+
+jobs:
+  react-compiler:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Build Next.js fixture with React Compiler enabled
+        run: pnpm build:fixture:next:react-compiler
+
+      - name: Run React Compiler runtime validation
+        run: pnpm test:fixture:next-runtime:react-compiler

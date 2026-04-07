@@ -10,9 +10,12 @@ export default class Counter extends Component<{ initial: number }> {
 
   render(): JSX.Element {
     return (
-      <button onClick={() => this.increment(1)}>
-        Count: {this.count}
-      </button>
+      <>
+        <p className="counter-note">Meridian client child</p>
+        <button onClick={() => this.increment(1)}>
+          Count: {this.count}
+        </button>
+      </>
     );
   }
 }

@@ -6,10 +6,13 @@
   "scripts": {
     "build": "pnpm --filter './packages/*' -r run build",
     "build:fixture:next": "pnpm --dir ./fixtures/next-app-router build",
+    "build:fixture:next:react-compiler": "pnpm --dir ./fixtures/next-app-router build:compiler",
     "smoke:compiler-dist": "node ./scripts/smoke-compiler-dist.mjs",
     "check": "pnpm build && pnpm test && pnpm smoke:compiler-dist",
+    "check:react-compiler": "pnpm build:fixture:next:react-compiler && pnpm test:fixture:next-runtime:react-compiler",
     "test": "vitest run",
     "test:fixture:next-runtime": "vitest run --config vitest.fixture.config.ts",
+    "test:fixture:next-runtime:react-compiler": "vitest run --config vitest.react-compiler.config.ts",
     "test:watch": "vitest",
     "lint": "eslint .",
     "typecheck": "tsc --build"

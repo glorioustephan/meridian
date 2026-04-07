@@ -64,3 +64,18 @@ That validation proves:
 - the page shell renders from the server
 - the generated Meridian client child hydrates without mismatch warnings
 - clicking the counter updates client state after hydration
+
+## React Compiler validation
+
+Phase 8 validates the same fixture with Next.js React Compiler support enabled through `next.config.ts`:
+
+```sh
+pnpm build:fixture:next:react-compiler
+pnpm test:fixture:next-runtime:react-compiler
+```
+
+That validation proves:
+
+- the fixture still builds when `reactCompiler: true` is enabled
+- the Meridian-generated client chunk remains minimal and does not add `useMemo` / `useCallback`
+- `next dev` still hydrates the Meridian child without mismatch warnings under the compiler-enabled app

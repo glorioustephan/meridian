@@ -69,7 +69,7 @@ export default defineConfig({
           { text: 'Phase 3 Completion', link: '/development/phase-3-strict-mode' },
           { text: 'Phase 6 Completion', link: '/development/phase-6-cli-watch' },
           { text: 'Phase 7 Completion', link: '/development/phase-7-next-runtime' },
-          { text: 'Phase 8', link: '/development/phase-8-react-compiler' },
+          { text: 'Phase 8 Completion', link: '/development/phase-8-react-compiler' },
           { text: 'Phase 9', link: '/development/phase-9-release' },
         ],
       },

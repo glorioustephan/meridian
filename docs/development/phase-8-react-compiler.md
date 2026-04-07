@@ -2,135 +2,59 @@
 title: Phase 8
 ---
 
-# Phase 8: React Compiler Validation and Documentation
+# Phase 8 Completion: React Compiler Validation and Documentation
+
+Status: Complete on April 7, 2026
 
 ## Objective
 
-Validate that Meridian-generated output remains correct under React Compiler-enabled builds and turn the current placeholder documentation into a real integration guide.
+Validate that Meridian-generated output remains correct under React Compiler-enabled builds and replace the placeholder React Compiler guide with a validated integration document.
 
-This phase primarily touches:
+## Delivered
 
-- [guide/react-compiler.md](/guide/react-compiler)
-- the existing Next.js fixture or a closely related validation fixture
-- CI or local verification scripts for compiler-enabled builds
+- compiler-enabled Next.js fixture support through `fixtures/next-app-router/next.config.ts`
+- local build command: `pnpm build:fixture:next:react-compiler`
+- local runtime command: `pnpm test:fixture:next-runtime:react-compiler`
+- shared browser runtime harness reused across baseline and compiler-enabled validation
+- dedicated GitHub Actions workflow at `.github/workflows/react-compiler.yml`
+- rewritten [guide/react-compiler.md](/guide/react-compiler)
 
-## Current State
+## What Phase 8 now validates
 
-Already true in the implementation:
+- Meridian generation still succeeds before the Next.js build
+- `next build` succeeds with `reactCompiler: true`
+- the same Meridian-generated client child still hydrates and responds to interaction under `next dev`
+- the Meridian-generated chunk remains minimal and does not grow explicit `useMemo` / `useCallback` helpers
 
-- getters lower to derived expressions or local helpers
-- methods lower to local functions
-- Meridian does not generate `useMemo` or `useCallback` by default
-- correctness does not currently depend on manual memoization
+## Important Decisions
 
-Missing:
+- The validation target remains the existing Next.js App Router fixture. Phase 8 does not create a second app.
+- The fixture gates compiler enablement via an environment variable so both baseline and compiler-enabled modes exercise the same app and the same Meridian output.
+- Compatibility is defined by build success and runtime parity, not by depending on a specific Turbopack output signature.
 
-- proof under a compiler-enabled build
-- documented guidance for how Meridian and React Compiler are meant to coexist
+## Commands
 
-## Scope
+Local:
 
-In scope:
+```sh
+pnpm build:fixture:next:react-compiler
+pnpm test:fixture:next-runtime:react-compiler
+```
 
-- enable a React Compiler-capable build for a Meridian-generated app
-- verify that the build passes and behavior remains correct
-- document the supported integration story
+CI:
 
-Out of scope:
+- `.github/workflows/react-compiler.yml`
 
-- changing Meridian to emit memoization by default
-- adding React Compiler-specific syntax to Meridian source
-- promising support for undocumented or unstable framework internals
+## Documentation Outcome
 
-## Precondition
+[guide/react-compiler.md](/guide/react-compiler) now documents:
 
-Before implementing this phase, verify the current official React Compiler enablement path for the chosen framework and version.
+- Meridian vs React Compiler responsibilities
+- the validated Next.js path and versions
+- exact local validation commands
+- the current support boundary
+- the fact that Meridian correctness does not depend on React Compiler
 
-Do not guess the flag name, plugin shape, or config location from memory. The exact integration mechanism may move over time. Treat the official docs as the source of truth for the final implementation.
+## Remaining Work
 
-## Validation Strategy
-
-### 1. Choose one authoritative validation path
-
-Use one framework path first. The existing Next.js fixture is the best default because Meridian already has a working generated-output flow there.
-
-Recommended approach:
-
-- extend `fixtures/next-app-router` with a compiler-enabled variant, or
-- add a sibling fixture that differs only by React Compiler configuration
-
-The goal is to isolate the compiler variable, not to create a second unrelated app.
-
-### 2. Prove build-time compatibility
-
-Required checks:
-
-- Meridian generation still succeeds
-- the framework build succeeds with React Compiler enabled
-- no Meridian codegen rule needs to change just to make the build pass
-
-### 3. Prove runtime correctness
-
-Reuse the runtime validation from Phase 7 where possible:
-
-- load the page
-- confirm hydration
-- interact with the Meridian client child
-- confirm behavior matches the non-compiler build
-
-This prevents “build passes, runtime changes subtly” regressions.
-
-### 4. Audit generated output assumptions
-
-Once the compiler-enabled fixture is passing, perform a focused audit of Meridian output patterns:
-
-- derived expressions
-- local function handlers
-- effect bodies and dependency arrays
-- primitive hook lowering
-
-The purpose of this audit is to confirm Meridian is emitting readable React that the React Compiler can optimize naturally. It is not to chase optimizer-specific patterns unless the official toolchain requires them.
-
-## Documentation Work
-
-Replace the placeholder content in [guide/react-compiler.md](/guide/react-compiler) with:
-
-- Meridian’s positioning relative to React Compiler
-- what Meridian does and does not optimize itself
-- the recommended build order
-- known constraints or caveats
-- the exact fixture or command used to validate support
-
-The guide should explicitly say:
-
-- Meridian correctness does not depend on React Compiler
-- React Compiler is an optional optimization layer over generated React code
-
-## CI Strategy
-
-Add compiler-enabled validation only after it is stable locally.
-
-Recommended rollout:
-
-1. add a dedicated local script
-2. add a separate CI job or matrix target
-3. keep it required only after repeated green runs
-
-If compiler-enabled builds are materially slower, isolate them from the main fast verification job instead of slowing every PR by default.
-
-## Acceptance Criteria
-
-Phase 8 is complete when:
-
-- at least one real fixture builds successfully with React Compiler enabled
-- runtime behavior matches the non-compiler path for the validated fixture
-- Meridian still emits minimal idiomatic React without default memoization helpers
-- [guide/react-compiler.md](/guide/react-compiler) is fully authored
-- the validation path is automated
-
-## Failure Modes to Avoid
-
-- enabling React Compiler in an ad hoc way that is not supported by official docs
-- rewriting Meridian to emit `useMemo` or `useCallback` preemptively
-- declaring broad compatibility from a single unverified build-only pass
-- documenting assumptions that are not backed by an actual fixture
+Phase 8 is done. The remaining roadmap work is Phase 9 release hardening.

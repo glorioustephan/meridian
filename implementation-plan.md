@@ -2,7 +2,7 @@
 
 This document translates [rfc.md](./rfc.md) into a concrete, status-aware implementation plan for Meridian v1.
 
-Status date: April 6, 2026
+Status date: April 7, 2026
 
 All implementation is assumed to be in TypeScript, using ESM modules and strict type-checking throughout.
 
@@ -42,6 +42,9 @@ The repo is no longer at the “initial scaffold” stage. The current implement
 - `pnpm test`
 - `pnpm smoke:compiler-dist`
 - `pnpm build:fixture:next`
+- `pnpm build:fixture:next:react-compiler`
+- `pnpm test:fixture:next-runtime`
+- `pnpm test:fixture:next-runtime:react-compiler`
 - `pnpm --dir docs build`
 
 ### Implemented
@@ -55,12 +58,12 @@ The repo is no longer at the “initial scaffold” stage. The current implement
 - primitive lowering and `@use(...)` wiring
 - CLI build and watch commands
 - real Next.js App Router fixture that consumes generated output
-- CI workflow for package build, tests, built-package smoke check, and Next fixture build
+- Next.js runtime validation under `next dev`
+- React Compiler-enabled build and runtime validation
+- CI workflows for package verification, Next runtime validation, and React Compiler validation
 
 ### Not finished
 
-- `next dev` and hydration/runtime validation for the Next fixture
-- React Compiler-enabled validation
 - release prep, packaging, docs hardening, and alpha publication work
 
 ---
@@ -115,6 +118,8 @@ The repo structure should now be described as it exists, not as a blank-slate ta
   .github/
     workflows/
       ci.yml
+      next-runtime.yml
+      react-compiler.yml
 ```
 
 ### Package roles
@@ -354,23 +359,21 @@ Remaining:
 
 ### Phase 8 - React Compiler Validation and Stabilization
 
-Status: Not started
+Status: Complete
 
-Objective:
+Delivered:
 
-- prove generated Meridian output remains correct under React Compiler-enabled builds
-- document React Compiler positioning beyond the RFC summary
+- compiler-enabled Next.js fixture path through `MERIDIAN_REACT_COMPILER=1`
+- local compiler-enabled build and runtime scripts
+- browser runtime validation under `next dev` with the compiler-enabled app
+- dedicated React Compiler GitHub Actions workflow
+- rewritten [docs/guide/react-compiler.md](./docs/guide/react-compiler.md) grounded in the validated Next.js path
 
-Planned deliverables:
+Notes:
 
-- fixture or example build with React Compiler enabled
-- compatibility notes in docs
-- confirmation that Meridian correctness does not depend on generated memoization
-
-Current signal:
-
-- Meridian already emits plain derived expressions and local functions instead of default `useMemo` or `useCallback`
-- [docs/guide/react-compiler.md](./docs/guide/react-compiler.md) still needs real content
+- validation is defined as build success and runtime parity under the compiler-enabled app
+- Meridian still emits minimal generated React and does not add `useMemo` or `useCallback` by default
+- compatibility claims remain intentionally narrow to the validated Next.js App Router path
 
 ### Phase 9 - v1 Hardening and Release Prep
 
@@ -424,7 +427,7 @@ This section tracks both current coverage and missing coverage.
 
 ### Still missing
 
-- React Compiler-enabled build validation
+- release-hardening regression expansion
 
 ---
 
@@ -450,7 +453,7 @@ The plan should stay narrower than earlier drafts and match the RFC exactly wher
 
 ### Remaining delta from the RFC
 
-- the RFC calls for correctness under React Compiler-enabled builds; that validation has not been implemented yet
+- no material delta remains for the current v1 scope; the remaining work is release hardening
 
 ---
 
@@ -466,7 +469,7 @@ These rules still apply:
 
 Additional gate:
 
-- do not broaden the public API until Phase 8 is complete and the current v1 behavior is documented
+- do not broaden the public API during Phase 9 release hardening
 
 ---
 
@@ -474,7 +477,7 @@ Additional gate:
 
 The highest-value next sequence is:
 
-1. implement React Compiler-enabled validation and documentation
-2. begin release hardening only after the above are green
+1. finish release hardening and packaging work
+2. keep validation workflows green while documenting the alpha usage path
 
-The next meaningful milestone is the completion of Phase 8: Meridian should have a proven compiler pipeline, proven Next.js App Router integration, and explicit evidence that React Compiler optimization does not change correctness.
+The next meaningful milestone is Phase 9: Meridian should move from validated prototype to reproducible alpha package.

@@ -20,7 +20,7 @@ export function resolveConfig(partial: Partial<MeridianConfig>): MeridianConfig 
     inputDir: resolve(inputDir),
     outDir: resolve(outDir),
     extensions: partial.extensions ?? ['ts', 'tsx'],
-    sourceMaps: partial.sourceMaps ?? true,
+    sourceMaps: partial.sourceMaps ?? false,
     copyFiles: partial.copyFiles ?? false,
     excludeDirs: partial.excludeDirs ?? [
       '.git',

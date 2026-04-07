@@ -59,7 +59,6 @@ The repo is no longer at the “initial scaffold” stage. The current implement
 
 ### Not finished
 
-- watch-mode tests and stronger incremental rebuild guarantees
 - `next dev` and hydration/runtime validation for the Next fixture
 - React Compiler-enabled validation
 - release prep, packaging, docs hardening, and alpha publication work
@@ -309,7 +308,7 @@ Remaining:
 
 ### Phase 6 - CLI and Precompile Pipeline
 
-Status: Mostly complete
+Status: Complete
 
 Delivered:
 
@@ -320,17 +319,18 @@ Delivered:
 - excluded-directory handling
 - configurable passthrough copying
 - build-failing diagnostics
+- watch-mode tests
+- file-level rebuilds for common change/delete cases
+- full-rebuild fallback for ambiguous watcher events
 
 Remaining:
 
-- watch-mode tests
-- stronger guarantees around incremental rebuild behavior
-- source map support for generated output, if still desired for v1
+- none required for v1 core
 
 Clarification:
 
-- the current watch implementation is debounced and filtered
-- it is not yet a fully incremental compiler
+- the current watch implementation is debounced, filtered, and incremental at the file level where safe
+- Meridian does not emit source maps in v1; source-map support is explicitly deferred
 
 ### Phase 7 - Next.js App Router Fixture
 
@@ -420,8 +420,6 @@ This section tracks both current coverage and missing coverage.
 
 ### Still missing
 
-- React render tests under Strict Mode
-- watch-mode tests
 - `next dev` validation
 - hydration/runtime interaction tests for the Next fixture
 - React Compiler-enabled build validation
@@ -452,7 +450,6 @@ The plan should stay narrower than earlier drafts and match the RFC exactly wher
 
 - the RFC calls for correctness under React Compiler-enabled builds; that validation has not been implemented yet
 - the RFC calls for a Next.js App Router fixture; build-time coverage exists, but dev/hydration verification is still missing
-- the RFC test plan asks for a Strict Mode ownership proof; that has not been added yet
 
 ---
 
@@ -476,10 +473,8 @@ Additional gate:
 
 The highest-value next sequence is:
 
-1. add Strict Mode render tests with a real React renderer
-2. add watch-mode tests for the CLI
-3. validate `next dev` and hydration behavior for the Next fixture
-4. implement React Compiler-enabled validation and documentation
-5. begin release hardening only after the above are green
+1. validate `next dev` and hydration behavior for the Next fixture
+2. implement React Compiler-enabled validation and documentation
+3. begin release hardening only after the above are green
 
 The next meaningful milestone is the completion of Phase 8: Meridian should have a proven compiler pipeline, proven Next.js App Router integration, and explicit evidence that React Compiler optimization does not change correctness.

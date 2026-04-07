@@ -8,23 +8,22 @@ This section breaks the remaining Meridian v1 work into execution documents that
 
 The remaining work is:
 
-1. [Phase 6 Completion: CLI Watch and Incremental Rebuilds](./phase-6-cli-watch.md)
-2. [Phase 7 Completion: Next.js Runtime Validation](./phase-7-next-runtime.md)
-3. [Phase 8: React Compiler Validation and Documentation](./phase-8-react-compiler.md)
-4. [Phase 9: v1 Hardening and Release Preparation](./phase-9-release.md)
+1. [Phase 7 Completion: Next.js Runtime Validation](./phase-7-next-runtime.md)
+2. [Phase 8: React Compiler Validation and Documentation](./phase-8-react-compiler.md)
+3. [Phase 9: v1 Hardening and Release Preparation](./phase-9-release.md)
 
 Recently completed:
 
 1. [Phase 3 Completion: Strict Mode Render Validation](./phase-3-strict-mode.md)
+2. [Phase 6 Completion: CLI Watch and Incremental Rebuilds](./phase-6-cli-watch.md)
 
 ## Ordering
 
 The recommended implementation order is:
 
-1. harden Phase 6 watch behavior
-2. finish Phase 7 runtime coverage
-3. validate React Compiler behavior in Phase 8
-4. start release prep only after the earlier verification work is green
+1. finish Phase 7 runtime coverage
+2. validate React Compiler behavior in Phase 8
+3. start release prep only after the earlier verification work is green
 
 ## Working Rules
 

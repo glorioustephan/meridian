@@ -63,6 +63,7 @@ export default class Ignored extends Component { render() { return null; } }
     expect(result).toEqual({
       compiled: 1,
       copied: 0,
+      removed: 0,
       errors: 0,
       warnings: 0,
     });
@@ -105,6 +106,7 @@ export default class Broken extends Component {
     const copiedAsset = join(cwd, '.meridian/generated', 'assets', 'logo.svg');
 
     expect(result.copied).toBe(1);
+    expect(result.removed).toBe(0);
     expect(existsSync(copiedAsset)).toBe(true);
     expect(readFileSync(copiedAsset, 'utf8')).toContain('<svg />');
   });

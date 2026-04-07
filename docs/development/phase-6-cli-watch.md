@@ -16,18 +16,18 @@ This phase focuses on:
 
 ## Current State
 
-Already implemented:
+Implemented:
 
 - `meridian build` compiles source under `src/`
 - excluded directories and output-dir loops are filtered
 - watch mode is debounced
+- watch mode rebuilds changed files incrementally where the event can be classified safely
+- source-file deletion removes generated outputs
+- watch behavior is covered by automated tests
 
-Current limitation:
+Explicit v1 decision:
 
-- watch mode triggers a debounced full rebuild
-- there are no watch-mode tests
-- deletions and partial rebuild behavior are not validated
-- source maps are not emitted for generated files
+- source maps are deferred for v1 and are not emitted for generated files
 
 ## Scope
 
@@ -46,7 +46,7 @@ Out of scope:
 
 ## Target v1 Behavior
 
-`meridian watch` should:
+`meridian watch` now:
 
 1. perform an initial build
 2. watch the configured source subtree
@@ -55,11 +55,11 @@ Out of scope:
 5. remove generated outputs when source files are deleted
 6. print stable diagnostics without entering rebuild loops
 
-V1 does not need a full compiler graph cache. File-level rebuild tracking is sufficient.
+V1 does not need a full compiler graph cache. File-level rebuild tracking is sufficient, and ambiguous events still fall back to a full rebuild.
 
-## Implementation Strategy
+## Implementation Notes
 
-### 1. Split watch orchestration from raw `fs.watch`
+### 1. Watch orchestration is split from raw `fs.watch`
 
 Refactor `watch.ts` into smaller pieces:
 
@@ -77,7 +77,7 @@ Recommended internal shape:
 
 Inject `fs.watch` and timers through a thin dependency interface so the watch layer can be tested without relying on real filesystem races.
 
-### 2. Add source-to-output path mapping utilities
+### 2. Source-to-output mapping is shared with build mode
 
 The build path logic is currently embedded in `build.ts`. Extract reusable helpers for:
 
@@ -88,7 +88,7 @@ The build path logic is currently embedded in `build.ts`. Extract reusable helpe
 
 The watch path should use the same mapping code as full builds. Do not duplicate path logic.
 
-### 3. Support file-level rebuilds
+### 3. File-level rebuilds and deletions are supported
 
 For changed source files:
 
@@ -107,24 +107,13 @@ For directory changes or ambiguous events:
 
 This fallback is important. Correctness is more important than minimal rebuild work.
 
-### 4. Decide the source map contract
+### 4. Source maps are deferred for v1
 
-Make an explicit v1 decision:
-
-- either implement source maps for generated TSX
-- or mark source maps as deferred and remove them from the v1 exit criteria
-
-Do not leave this implicit.
-
-If implemented, source maps should:
-
-- be emitted only for generated Meridian files
-- preserve source file paths that point back to the Meridian source module
-- not attempt to map every rewritten token perfectly on the first pass
+The CLI config keeps a `sourceMaps` field for future expansion, but generated Meridian files do not emit source maps in v1. This is an explicit deferral, not an accidental omission.
 
 ## Test Plan
 
-Add a dedicated watch-mode test file under `packages/cli/src/`.
+Implemented in `packages/cli/src/watch.test.ts`.
 
 Required cases:
 

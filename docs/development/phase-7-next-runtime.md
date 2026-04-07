@@ -12,26 +12,23 @@ This phase extends the current fixture in:
 
 - `fixtures/next-app-router`
 
-The build path is already proven. The missing work is:
-
-- `next dev`
-- browser hydration
-- interactive client behavior after hydration
+The build path and runtime path are now both proven.
 
 ## Current State
 
-Already verified:
+Implemented:
 
 - Meridian source compiles into `.meridian/generated`
 - the fixture imports generated output rather than raw Meridian source
 - `next build` succeeds
+- fixture dev scripts make the two-process development model explicit
+- `next dev` is exercised automatically against generated Meridian output
+- hydration is checked in a real browser
+- interactive client behavior after hydration is covered automatically
 
-Not yet verified:
+Still deferred:
 
-- `next dev` startup and request serving
-- hydration of the Meridian client child in a browser
-- interactive updates after hydration
-- developer workflow when the compiled child changes
+- regeneration behavior while `next dev` stays running after the Meridian source changes
 
 ## Scope
 
@@ -59,9 +56,9 @@ Optional stretch goal:
 
 - confirm that editing the source component and rerunning Meridian generation is reflected in `next dev`
 
-## Implementation Strategy
+## Implementation Notes
 
-### 1. Add a dev-mode fixture script
+### 1. The fixture exposes explicit dev-mode scripts
 
 Extend the fixture package scripts with an explicit development path, for example:
 
@@ -76,7 +73,7 @@ The development flow should make the two-process model explicit:
 
 If you add a combined `dev` command, keep the composition simple and observable. A shell script or lightweight node runner is acceptable. Do not hide the fact that Meridian precompilation is a separate step.
 
-### 2. Add browser-driven runtime tests
+### 2. Browser-driven runtime tests are implemented
 
 Use browser automation for this phase. Playwright is the right level of realism.
 
@@ -95,7 +92,7 @@ Recommended test location:
 - `fixtures/next-app-router/tests/`
 - or a root-level test harness that treats the fixture as an external app
 
-### 3. Add hydration-specific assertions
+### 3. Hydration-specific assertions are part of the runtime test
 
 Do not stop at “the text appears.” The runtime test should distinguish prerendered markup from hydrated behavior.
 
@@ -108,7 +105,7 @@ Preferred additional assertion:
 
 - inspect the browser console for hydration warnings and fail if any React hydration mismatch appears
 
-### 4. Keep generated-output imports explicit
+### 4. Generated-output imports remain explicit
 
 The runtime tests should verify the fixture still imports:
 
@@ -116,7 +113,7 @@ The runtime tests should verify the fixture still imports:
 
 Do not allow the fixture to regress into importing Meridian source directly just because `next dev` can resolve local TypeScript.
 
-## Suggested Test Matrix
+## Implemented Test Matrix
 
 Required:
 
@@ -132,7 +129,7 @@ Required:
 4. **Interaction**
    - clicking the Meridian counter updates its rendered state
 
-Optional:
+Deferred:
 
 5. **Regeneration**
    - modify the Meridian source file
@@ -144,11 +141,11 @@ Optional:
 
 Do not put the slowest possible browser workflow into the main CI job immediately if it causes flakiness.
 
-Recommended rollout:
+Implemented rollout:
 
 1. keep `next build` in the main CI workflow
-2. add a separate dev-runtime workflow or optional job for browser validation
-3. promote it into the main required path once it is stable
+2. run browser validation in a separate `Next Runtime` workflow
+3. promote it into the main required path later if desired
 
 ## Acceptance Criteria
 

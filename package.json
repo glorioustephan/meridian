@@ -9,6 +9,7 @@
     "smoke:compiler-dist": "node ./scripts/smoke-compiler-dist.mjs",
     "check": "pnpm build && pnpm test && pnpm smoke:compiler-dist",
     "test": "vitest run",
+    "test:fixture:next-runtime": "vitest run --config vitest.fixture.config.ts",
     "test:watch": "vitest",
     "lint": "eslint .",
     "typecheck": "tsc --build"
@@ -23,6 +24,7 @@
     "@typescript-eslint/parser": "^8.0.0",
     "eslint": "^9.0.0",
     "jsdom": "^29.0.1",
+    "playwright": "^1.59.1",
     "prettier": "^3.0.0",
     "react": "19.2.0",
     "react-dom": "19.2.0",

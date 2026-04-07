@@ -4,6 +4,9 @@
   "type": "module",
   "scripts": {
     "build:meridian": "pnpm --dir ../.. --filter @meridian/cli run build && node ../../packages/cli/dist/index.js build --cwd .",
+    "dev:meridian": "pnpm --dir ../.. --filter @meridian/cli run build && node ../../packages/cli/dist/index.js watch --cwd .",
+    "dev:web": "next dev --hostname 127.0.0.1",
+    "dev": "pnpm build:meridian && concurrently -k -n meridian,next -c blue,green \"pnpm dev:meridian\" \"pnpm dev:web\"",
     "build": "pnpm build:meridian && next build",
     "clean": "rm -rf .next .meridian/generated"
   },
@@ -17,6 +20,7 @@
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "concurrently": "^9.2.1",
     "typescript": "^5.7.0"
   }
 }

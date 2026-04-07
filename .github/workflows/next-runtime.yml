@@ -1,0 +1,53 @@
+name: Next Runtime
+
+on:
+  pull_request:
+    paths:
+      - 'fixtures/next-app-router/**'
+      - 'packages/cli/**'
+      - 'packages/compiler/**'
+      - 'packages/meridian/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'vitest.fixture.config.ts'
+      - '.github/workflows/next-runtime.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'fixtures/next-app-router/**'
+      - 'packages/cli/**'
+      - 'packages/compiler/**'
+      - 'packages/meridian/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'vitest.fixture.config.ts'
+      - '.github/workflows/next-runtime.yml'
+  workflow_dispatch:
+
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run Next.js runtime validation
+        run: pnpm test:fixture:next-runtime

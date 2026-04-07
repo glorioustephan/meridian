@@ -334,7 +334,7 @@ Clarification:
 
 ### Phase 7 - Next.js App Router Fixture
 
-Status: Mostly complete
+Status: Complete
 
 Delivered:
 
@@ -343,11 +343,14 @@ Delivered:
 - explicit `'use client'` Meridian module
 - successful `next build`
 - documented precompile + Next workflow
+- explicit fixture development scripts for Meridian watch + `next dev`
+- browser-driven runtime validation against `next dev`
+- hydration assertions for the generated Meridian client child
+- separate GitHub Actions workflow for the runtime browser job
 
 Remaining:
 
-- validate `next dev`
-- validate hydration/runtime behavior in-browser
+- none required for v1 core
 
 ### Phase 8 - React Compiler Validation and Stabilization
 
@@ -416,12 +419,11 @@ This section tracks both current coverage and missing coverage.
   - top-level hook ordering through component and primitive lowering tests
 - CLI build integration
 - Next.js App Router build integration
+- Next.js App Router dev/hydration runtime validation
 - built-compiler smoke test
 
 ### Still missing
 
-- `next dev` validation
-- hydration/runtime interaction tests for the Next fixture
 - React Compiler-enabled build validation
 
 ---
@@ -449,7 +451,6 @@ The plan should stay narrower than earlier drafts and match the RFC exactly wher
 ### Remaining delta from the RFC
 
 - the RFC calls for correctness under React Compiler-enabled builds; that validation has not been implemented yet
-- the RFC calls for a Next.js App Router fixture; build-time coverage exists, but dev/hydration verification is still missing
 
 ---
 
@@ -473,8 +474,7 @@ Additional gate:
 
 The highest-value next sequence is:
 
-1. validate `next dev` and hydration behavior for the Next fixture
-2. implement React Compiler-enabled validation and documentation
-3. begin release hardening only after the above are green
+1. implement React Compiler-enabled validation and documentation
+2. begin release hardening only after the above are green
 
 The next meaningful milestone is the completion of Phase 8: Meridian should have a proven compiler pipeline, proven Next.js App Router integration, and explicit evidence that React Compiler optimization does not change correctness.

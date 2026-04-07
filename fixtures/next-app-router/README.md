@@ -26,3 +26,41 @@ After the Meridian build step, `app/page.tsx` resolves:
 - `../.meridian/generated/components/Counter.meridian`
 
 This keeps the server/client boundary explicit and consistent with the v1 RFC.
+
+## Development workflow
+
+The fixture keeps Meridian compilation explicit during development.
+
+Two-terminal workflow:
+
+```sh
+pnpm --dir fixtures/next-app-router dev:meridian
+pnpm --dir fixtures/next-app-router dev:web
+```
+
+Combined workflow:
+
+```sh
+pnpm --dir fixtures/next-app-router dev
+```
+
+The combined command still preserves the same model:
+
+1. Meridian generates `.meridian/generated/`
+2. Meridian watch keeps generated output current
+3. `next dev` serves the App Router app against generated TSX
+
+## Runtime validation
+
+The Phase 7 runtime check uses a real browser against `next dev`:
+
+```sh
+pnpm test:fixture:next-runtime
+```
+
+That validation proves:
+
+- the fixture boots under `next dev`
+- the page shell renders from the server
+- the generated Meridian client child hydrates without mismatch warnings
+- clicking the counter updates client state after hydration

@@ -2,7 +2,7 @@
 
 This document translates [rfc.md](./rfc.md) into a concrete, status-aware implementation plan for Meridian v1.
 
-Status date: April 4, 2026
+Status date: April 6, 2026
 
 All implementation is assumed to be in TypeScript, using ESM modules and strict type-checking throughout.
 
@@ -42,6 +42,7 @@ The repo is no longer at the “initial scaffold” stage. The current implement
 - `pnpm test`
 - `pnpm smoke:compiler-dist`
 - `pnpm build:fixture:next`
+- `pnpm --dir docs build`
 
 ### Implemented
 
@@ -58,7 +59,6 @@ The repo is no longer at the “initial scaffold” stage. The current implement
 
 ### Not finished
 
-- Strict Mode render-level validation with a real React renderer
 - watch-mode tests and stronger incremental rebuild guarantees
 - `next dev` and hydration/runtime validation for the Next fixture
 - React Compiler-enabled validation
@@ -249,7 +249,7 @@ Notes:
 
 ### Phase 3 - Component Lowering
 
-Status: Mostly complete
+Status: Complete
 
 Delivered:
 
@@ -258,6 +258,8 @@ Delivered:
 - getter lowering
 - method lowering
 - syntax-aware `this` rewriting
+- renderer-backed tests that execute compiled output under `React.StrictMode`
+- structural assertions that generated components do not retain a runtime class instance
 - `render()` lowering
 
 Remaining:

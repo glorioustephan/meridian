@@ -1,10 +1,14 @@
 import { defineConfig } from 'vitepress';
 
+const repository = process.env.GITHUB_REPOSITORY ?? 'glorioustephan/meridian';
+const [repoOwner = 'glorioustephan', repoName = 'meridian'] = repository.split('/');
+const repositoryUrl = `https://github.com/${repoOwner}/${repoName}`;
+
 export default defineConfig({
   title: 'Meridian',
   description:
     'A compile-time authoring layer for React — write hooks as classes.',
-  base: '/meridian/',
+  base: `/${repoName}/`,
 
   themeConfig: {
     nav: [
@@ -72,7 +76,7 @@ export default defineConfig({
     ],
 
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/meridian-js/meridian' },
+      { icon: 'github', link: repositoryUrl },
     ],
 
     footer: {
@@ -81,8 +85,7 @@ export default defineConfig({
     },
 
     editLink: {
-      pattern:
-        'https://github.com/meridian-js/meridian/edit/main/docs/:path',
+      pattern: `${repositoryUrl}/edit/main/docs/:path`,
       text: 'Edit this page on GitHub',
     },
 

@@ -9,7 +9,7 @@ title: '@state'
 ## Import
 
 ```ts
-import { state } from '@meridian/meridian';
+import { state } from 'meridian';
 ```
 
 Note: the export is named `state`, not `State`. Use it as `@state` in decorator position.
@@ -30,7 +30,7 @@ export declare const state: (
 ```tsx
 'use client';
 
-import { Component, state } from '@meridian/meridian';
+import { Component, state } from 'meridian';
 
 export class Counter extends Component {
   @state count = 0;

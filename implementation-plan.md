@@ -38,11 +38,14 @@ The repo is no longer at the “initial scaffold” stage. The current implement
 
 ### Verified today
 
+- `pnpm clean`
 - `pnpm build`
 - `pnpm test`
 - `pnpm smoke:compiler-dist`
 - `pnpm build:fixture:next`
 - `pnpm build:fixture:next:react-compiler`
+- `pnpm pack:smoke`
+- `pnpm verify:release`
 - `pnpm test:fixture:next-runtime`
 - `pnpm test:fixture:next-runtime:react-compiler`
 - `pnpm --dir docs build`
@@ -60,11 +63,15 @@ The repo is no longer at the “initial scaffold” stage. The current implement
 - real Next.js App Router fixture that consumes generated output
 - Next.js runtime validation under `next dev`
 - React Compiler-enabled build and runtime validation
+- release-hardened package metadata and filtered tarball contents
+- clean release verification path from a clean checkout
+- changeset-based versioning workflow and release documentation
+- fresh-install tarball smoke testing with installed CLI/compiler/application packages
 - CI workflows for package verification, Next runtime validation, and React Compiler validation
 
 ### Not finished
 
-- release prep, packaging, docs hardening, and alpha publication work
+- none for the current v1 roadmap
 
 ---
 
@@ -377,19 +384,21 @@ Notes:
 
 ### Phase 9 - v1 Hardening and Release Prep
 
-Status: Not started
+Status: Complete
 
-Objective:
+Delivered:
 
-- turn the prototype into a reproducible v1 alpha
+- publishable package metadata for `meridian`, `@meridian/compiler`, and `@meridian/cli`
+- package README files, root license, root changelog, and documented release process
+- clean-first package builds and a root `verify:release` workflow
+- tarball inspection and fresh-install smoke validation via `pnpm pack:smoke`
+- install and usage docs aligned with the actual package names and CLI behavior
+- CI coverage for tarball smoke testing in the main verification workflow
 
-Planned deliverables:
+Notes:
 
-- stable docs for install and usage
-- release packaging for all packages
-- changelog and versioning policy
-- more regression fixtures
-- clean example-from-scratch workflow
+- the root workspace package is now explicitly private and distinct from the publishable `meridian` package
+- Phase 9 uses changesets for prerelease versioning workflow, with the repo documented around the first `0.1.0-alpha.0` release candidate
 
 ---
 
@@ -427,7 +436,7 @@ This section tracks both current coverage and missing coverage.
 
 ### Still missing
 
-- release-hardening regression expansion
+- none required for the current v1 roadmap
 
 ---
 
@@ -453,7 +462,7 @@ The plan should stay narrower than earlier drafts and match the RFC exactly wher
 
 ### Remaining delta from the RFC
 
-- no material delta remains for the current v1 scope; the remaining work is release hardening
+- no material delta remains for the current v1 scope
 
 ---
 
@@ -469,15 +478,12 @@ These rules still apply:
 
 Additional gate:
 
-- do not broaden the public API during Phase 9 release hardening
+- keep future work out of the current v1 contract unless it is covered by a new RFC
 
 ---
 
 ## 9. Immediate Next Work
 
-The highest-value next sequence is:
+The current implementation-plan roadmap is complete.
 
-1. finish release hardening and packaging work
-2. keep validation workflows green while documenting the alpha usage path
-
-The next meaningful milestone is Phase 9: Meridian should move from validated prototype to reproducible alpha package.
+Any subsequent work should start from a new scoped plan or RFC rather than extending the original v1 implementation phases.

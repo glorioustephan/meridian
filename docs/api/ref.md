@@ -9,7 +9,7 @@ title: '@ref'
 ## Import
 
 ```ts
-import { ref } from '@meridian/meridian';
+import { ref } from 'meridian';
 ```
 
 Note: the export is named `ref`, not `Ref`. Use it as `@ref` in decorator position.
@@ -49,7 +49,7 @@ The most common use of `@ref` is attaching to DOM elements via the `ref` prop:
 ```tsx
 'use client';
 
-import { Component, ref, effect } from '@meridian/meridian';
+import { Component, ref, effect } from 'meridian';
 
 export class AutoFocus extends Component {
   @ref inputEl!: React.RefObject<HTMLInputElement>;
@@ -86,7 +86,7 @@ Use `@ref` for mutable values that should not trigger re-renders when they chang
 ```tsx
 'use client';
 
-import { Component, state, ref, effect } from '@meridian/meridian';
+import { Component, state, ref, effect } from 'meridian';
 
 export class Poller extends Component<{ url: string; intervalMs: number }> {
   @state data: unknown = null;

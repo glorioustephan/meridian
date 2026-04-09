@@ -68,7 +68,7 @@ export function Counter({ initialCount = 0 }: CounterProps) {
 ```tsx
 'use client';
 
-import { Component, state, effect } from '@meridian/meridian';
+import { Component, state, effect } from 'meridian';
 
 interface CounterProps {
   initialCount?: number;
@@ -158,7 +158,7 @@ Meridian is not the right tool when:
 
 | Package | Role |
 |---|---|
-| `@meridian/meridian` | Base classes (`Component`, `Primitive`) and decorators (`@state`, `@ref`, `@effect`, `@use`). This is the only package your application code imports directly. |
+| `meridian` | Base classes (`Component`, `Primitive`) and decorators (`@state`, `@ref`, `@effect`, `@use`). This is the only package your application code imports directly. |
 | `@meridian/compiler` | The compiler library. Exports `compileModule(source, filePath)` for programmatic use and integration with build tools. |
 | `@meridian/cli` | The `meridian build` and `meridian watch` commands used in `package.json` scripts. |
 

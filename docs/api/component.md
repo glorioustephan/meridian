@@ -4,12 +4,12 @@ title: Component<Props>
 
 # Component&lt;Props&gt;
 
-`Component<Props>` is the base class for interactive client components. It lives in the `@meridian/meridian` package. A class that extends `Component<Props>` is transformed by the Meridian compiler into a React function component.
+`Component<Props>` is the base class for interactive client components. It lives in the `meridian` package. A class that extends `Component<Props>` is transformed by the Meridian compiler into a React function component.
 
 ## Import
 
 ```ts
-import { Component } from '@meridian/meridian';
+import { Component } from 'meridian';
 ```
 
 ## Type signature
@@ -132,7 +132,7 @@ No other decorators are supported in v1. Using an unknown decorator triggers dia
 ```tsx
 'use client';
 
-import { Component, state, ref, effect } from '@meridian/meridian';
+import { Component, state, ref, effect } from 'meridian';
 
 interface CounterProps {
   initialCount?: number;

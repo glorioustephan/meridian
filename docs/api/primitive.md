@@ -4,12 +4,12 @@ title: Primitive<T>
 
 # Primitive&lt;T&gt;
 
-`Primitive<T>` is the base class for reusable stateful logic. A class that extends `Primitive<T>` compiles to a custom React hook. It lives in the `@meridian/meridian` package.
+`Primitive<T>` is the base class for reusable stateful logic. A class that extends `Primitive<T>` compiles to a custom React hook. It lives in the `meridian` package.
 
 ## Import
 
 ```ts
-import { Primitive } from '@meridian/meridian';
+import { Primitive } from 'meridian';
 ```
 
 ## Type signature
@@ -180,7 +180,7 @@ Use the `@use` decorator in a `Component` or another `Primitive` to call the gen
 ```tsx
 'use client';
 
-import { Component, use } from '@meridian/meridian';
+import { Component, use } from 'meridian';
 import { UseDebounce } from '@meridian/primitives/UseDebounce';
 
 export class SearchBox extends Component<{ placeholder?: string }> {

@@ -1,18 +1,43 @@
 {
   "name": "@meridian/compiler",
-  "version": "0.0.0",
+  "version": "0.1.0-alpha.0",
+  "description": "Programmatic compiler API for Meridian source-to-React transforms.",
   "type": "module",
+  "license": "MIT",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "exports": {
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
-    }
+    },
+    "./package.json": "./package.json"
+  },
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/glorioustephan/meridian.git",
+    "directory": "packages/compiler"
+  },
+  "homepage": "https://glorioustephan.github.io/meridian/",
+  "bugs": {
+    "url": "https://github.com/glorioustephan/meridian/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "tag": "alpha",
+    "provenance": true
   },
   "scripts": {
-    "build": "tsc --build",
-    "clean": "rm -rf dist"
+    "build": "pnpm clean && tsc --build",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo"
   },
   "dependencies": {
     "@babel/generator": "^7.26.0",

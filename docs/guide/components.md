@@ -13,7 +13,7 @@ Every Meridian component file follows this structure:
 ```tsx
 'use client';  // Required — marks the module as a client entrypoint
 
-import { Component, state, ref, effect } from '@meridian/meridian';
+import { Component, state, ref, effect } from 'meridian';
 
 interface MyProps {
   // Your prop types here
@@ -49,7 +49,7 @@ Props are declared as a type parameter to `Component<Props>`. Inside the class, 
 ```tsx
 'use client';
 
-import { Component } from '@meridian/meridian';
+import { Component } from 'meridian';
 
 interface GreetingProps {
   name: string;
@@ -85,7 +85,7 @@ export class SimpleBox extends Component {
 ```tsx
 'use client';
 
-import { Component, state } from '@meridian/meridian';
+import { Component, state } from 'meridian';
 
 export class Toggle extends Component {
   @state open = false;
@@ -170,7 +170,7 @@ addItemWrong(item: string): void {
 ```tsx
 'use client';
 
-import { Component, ref } from '@meridian/meridian';
+import { Component, ref } from 'meridian';
 
 export class FocusOnMount extends Component {
   @ref inputEl!: React.RefObject<HTMLInputElement>;
@@ -310,7 +310,7 @@ Inline event handlers in JSX (`e => { this.value = e.target.value; }`) are suppo
 ```tsx
 'use client';
 
-import { Component, state, ref, effect } from '@meridian/meridian';
+import { Component, state, ref, effect } from 'meridian';
 
 interface TodoListProps {
   title: string;

@@ -10,7 +10,7 @@ This example builds a `UseDebounce<T>` Primitive that delays updating a value un
 
 ```ts
 // src/primitives/UseDebounce.ts
-import { Primitive, state, effect } from '@meridian/meridian';
+import { Primitive, state, effect } from 'meridian';
 
 export class UseDebounce<T> extends Primitive<T> {
   @state current: T;
@@ -77,7 +77,7 @@ The class becomes a `useUseDebounce` function. The constructor parameters become
 // src/components/DebouncedInput.tsx
 'use client';
 
-import { Component, state, use } from '@meridian/meridian';
+import { Component, state, use } from 'meridian';
 import { UseDebounce } from '@meridian/primitives/UseDebounce';
 
 interface DebouncedInputProps {

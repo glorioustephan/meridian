@@ -2,167 +2,59 @@
 title: Phase 9
 ---
 
-# Phase 9: v1 Hardening and Release Preparation
+# Phase 9 Completion: v1 Hardening and Release Preparation
+
+Status: Complete on April 7, 2026
 
 ## Objective
 
-Turn the current prototype into a reproducible v1 alpha that can be installed, exercised from a clean checkout, and published without leaking internal artifacts or unfinished packaging assumptions.
+Turn the validated prototype into a reproducible v1 alpha that can be installed from packed tarballs, verified from a clean checkout, and prepared for publication without leaking workspace-only assumptions.
 
-This phase is about operational quality, not new language features.
+## Delivered
 
-## Current State
+- publishable metadata on `meridian`, `@meridian/compiler`, and `@meridian/cli`
+- package README files plus root `LICENSE`, `CHANGELOG.md`, and `RELEASING.md`
+- clean-first package build scripts and a root `pnpm verify:release` command
+- tarball inspection plus fresh-install smoke validation through `pnpm pack:smoke`
+- install and usage docs aligned with the actual package names and CLI behavior
+- CI coverage for tarball smoke testing in the main verification workflow
 
-Already available:
+## What Phase 9 validates
 
-- package builds
-- tests
-- built-package smoke check
-- CI workflow
-- working CLI and compiler path
+- package tarballs include filtered publishable contents only
+- `dist/` is rebuilt from a clean state without stale test artifacts
+- the packed CLI, compiler, and authoring package can be installed into a fresh temp project
+- the installed CLI can compile a small multi-file Meridian component tree outside the workspace
+- the docs and release instructions match the real shipped workflow
 
-Still missing:
+## Important Decisions
 
-- package publication metadata and packaging discipline
-- install and usage documentation suitable for first external users
-- versioning and changelog policy
-- release-focused regression coverage
+- The root workspace package is private and renamed away from the publishable `meridian` package to avoid release confusion.
+- Changesets is used for prerelease versioning workflow, while the root `CHANGELOG.md` remains the human-readable release log.
+- The public v1 CLI remains flag-driven; the docs no longer promise an undocumented `meridian.config.ts` file format.
 
-## Scope
+## Commands
 
-In scope:
+Local:
 
-- package metadata and publish configuration
-- release-quality docs
-- tarball and install smoke tests
-- artifact hygiene
-- regression fixture expansion
+```sh
+pnpm pack:smoke
+pnpm verify:release
+```
 
-Out of scope:
+CI:
 
-- new framework features
-- v2 API design
-- native framework plugins
+- `.github/workflows/ci.yml`
 
-## Workstreams
+## Documentation Outcome
 
-### 1. Package hygiene
+The release-facing docs now cover:
 
-Audit:
+- real package names and install commands
+- the precompile workflow for Next.js
+- clean-check-release verification
+- prerelease versioning and publish steps
 
-- `packages/meridian/package.json`
-- `packages/compiler/package.json`
-- `packages/cli/package.json`
+## Remaining Work
 
-Add or confirm:
-
-- `license`
-- `repository`
-- `homepage`
-- `bugs`
-- `files`
-- `publishConfig`
-- appropriate `bin` exposure for the CLI
-- clean `exports` maps
-
-The `files` field is especially important. Published packages should include only the assets needed at runtime:
-
-- `dist/`
-- package metadata
-- README and license files if desired
-
-Do not publish tests, tsbuildinfo files, local fixtures, or stale build outputs.
-
-### 2. Dist cleanliness and release build discipline
-
-Add an explicit release build path that starts from a clean state.
-
-Recommended tasks:
-
-- ensure package-level clean scripts are used before release builds
-- confirm `dist/` does not contain test files or stale outputs from earlier builds
-- add a release verification script that runs:
-  - clean
-  - build
-  - test
-  - smoke checks
-
-The current repo has already shown that stale `dist/` contents can survive between iterations. Release prep should make that impossible.
-
-### 3. Install and usage documentation
-
-Upgrade the docs so a new user can:
-
-1. install Meridian packages
-2. understand the precompile workflow
-3. run a minimal example
-4. understand the main unsupported v1 features
-
-Target docs to audit and improve:
-
-- [guide/installation.md](/guide/installation)
-- [guide/quick-start.md](/guide/quick-start)
-- [guide/nextjs.md](/guide/nextjs)
-- `README.md`
-
-The docs must describe the real workflow, including explicit generated-output integration and unsupported patterns.
-
-### 4. Versioning and changelog policy
-
-Choose a concrete release process.
-
-Recommended baseline:
-
-- semantic versioning
-- prerelease tag for the first alpha
-- changeset-based or equivalent changelog generation
-
-Whichever mechanism is chosen, document:
-
-- how versions are cut
-- how changelogs are generated
-- how packages are published
-- what qualifies as breaking for Meridian v1
-
-### 5. Tarball and fresh-install smoke tests
-
-Add release verification that simulates real consumer usage.
-
-Required checks:
-
-1. run `pnpm pack` for each publishable package
-2. install those tarballs into a temp directory or fixture project
-3. verify:
-   - the compiler can be imported
-   - the CLI can execute
-   - the `meridian` package resolves correctly
-
-This step catches packaging mistakes that normal workspace tests do not.
-
-### 6. Regression fixture expansion
-
-Add a small set of release-grade regression fixtures beyond the current happy path:
-
-- multi-file component trees using generated imports
-- invalid `@use(...)` argument forms
-- deletion/rebuild behavior once watch mode is completed
-- any React Compiler-enabled fixture added in Phase 8
-
-These fixtures should exist to protect release behavior, not to grow the feature set.
-
-## Acceptance Criteria
-
-Phase 9 is complete when:
-
-- publishable packages have correct metadata and filtered package contents
-- clean release builds do not emit stale test artifacts into `dist/`
-- install docs match the actual workflow
-- versioning and changelog policy are documented
-- tarball install smoke tests pass
-- the repo can be validated from a clean checkout without hand-edited steps
-
-## Failure Modes to Avoid
-
-- publishing workspace-only assumptions
-- shipping test files or internal fixtures in package tarballs
-- writing install docs that describe a future SWC/plugin story instead of the current precompile model
-- cutting an alpha before Phase 8 validation exists
+Phase 9 is done. The original Meridian v1 implementation-plan roadmap is complete.

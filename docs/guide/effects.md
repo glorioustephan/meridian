@@ -20,7 +20,7 @@ Decorate a method with `@effect` to run it as a side effect after the component 
 ```tsx
 'use client';
 
-import { Component, state, effect } from '@meridian/meridian';
+import { Component, state, effect } from 'meridian';
 
 export class DocumentTitle extends Component<{ title: string }> {
   @effect
@@ -51,7 +51,7 @@ Use `@effect.layout` for effects that need to run synchronously after the DOM ha
 ```tsx
 'use client';
 
-import { Component, state, ref, effect } from '@meridian/meridian';
+import { Component, state, ref, effect } from 'meridian';
 
 export class MeasuredBox extends Component {
   @ref containerEl!: React.RefObject<HTMLDivElement>;

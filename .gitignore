@@ -5,3 +5,4 @@ dist/
 
 docs/.vitepress/dist/
 docs/.vitepress/cache/
+.meridian-runtime-tests/

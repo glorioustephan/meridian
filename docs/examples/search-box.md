@@ -18,7 +18,7 @@ This example uses the `UseDebounce<T>` Primitive from the [Debounce example](./d
 // src/components/SearchBox.tsx
 'use client';
 
-import { Component, state, ref, effect, use } from '@meridian/meridian';
+import { Component, state, ref, effect, use } from 'meridian';
 import { UseDebounce } from '@meridian/primitives/UseDebounce';
 
 interface SearchResult {

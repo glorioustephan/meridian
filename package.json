@@ -1,23 +1,30 @@
 {
-  "name": "meridian",
+  "name": "@meridian/workspace",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0-alpha.0",
   "type": "module",
   "scripts": {
+    "clean": "pnpm --filter './packages/*' -r run clean && rm -rf fixtures/next-app-router/.next fixtures/next-app-router/.meridian .meridian-runtime-tests docs/.vitepress/dist docs/.vitepress/cache",
     "build": "pnpm --filter './packages/*' -r run build",
     "build:fixture:next": "pnpm --dir ./fixtures/next-app-router build",
     "build:fixture:next:react-compiler": "pnpm --dir ./fixtures/next-app-router build:compiler",
+    "pack:smoke": "node ./scripts/pack-smoke.mjs",
     "smoke:compiler-dist": "node ./scripts/smoke-compiler-dist.mjs",
     "check": "pnpm build && pnpm test && pnpm smoke:compiler-dist",
     "check:react-compiler": "pnpm build:fixture:next:react-compiler && pnpm test:fixture:next-runtime:react-compiler",
+    "verify:release": "pnpm clean && pnpm build && pnpm test && pnpm smoke:compiler-dist && pnpm build:fixture:next && pnpm test:fixture:next-runtime && pnpm build:fixture:next:react-compiler && pnpm test:fixture:next-runtime:react-compiler && pnpm pack:smoke && pnpm --dir docs build",
     "test": "vitest run",
     "test:fixture:next-runtime": "vitest run --config vitest.fixture.config.ts",
     "test:fixture:next-runtime:react-compiler": "vitest run --config vitest.react-compiler.config.ts",
     "test:watch": "vitest",
     "lint": "eslint .",
-    "typecheck": "tsc --build"
+    "typecheck": "tsc --build",
+    "changeset": "changeset",
+    "version:packages": "changeset version",
+    "release:publish": "changeset publish"
   },
   "devDependencies": {
+    "@changesets/cli": "^2.29.7",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
     "@types/node": "^22.0.0",

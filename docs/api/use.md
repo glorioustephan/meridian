@@ -9,7 +9,7 @@ title: '@use'
 ## Import
 
 ```ts
-import { use } from '@meridian/meridian';
+import { use } from 'meridian';
 ```
 
 Note: the export is named `use`, not `Use`. Use it as `@use(...)` in decorator position.
@@ -35,7 +35,7 @@ export declare function use<TArgs extends unknown[], TReturn>(
 ```tsx
 'use client';
 
-import { Component, state, use } from '@meridian/meridian';
+import { Component, state, use } from 'meridian';
 import { UseDebounce } from '@meridian/primitives/UseDebounce';
 
 export class SearchPage extends Component {

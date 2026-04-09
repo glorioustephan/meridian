@@ -12,7 +12,7 @@ The counter is the canonical Meridian example. It demonstrates `@state`, a gette
 // src/components/Counter.tsx
 'use client';
 
-import { Component, state, effect } from '@meridian/meridian';
+import { Component, state, effect } from 'meridian';
 
 interface CounterProps {
   initialCount?: number;

@@ -12,7 +12,7 @@ title: CLI Reference
 pnpm add -D @meridian/cli
 ```
 
-After installation, `meridian` is available in your project's `node_modules/.bin/` directory and can be run via `pnpm meridian`, `npx meridian`, or directly in `package.json` scripts.
+After installation, `meridian` is available in your project's `node_modules/.bin/` directory and can be run via `pnpm exec meridian`, `npx meridian`, or directly in `package.json` scripts.
 
 ## Commands
 
@@ -112,40 +112,27 @@ Or in separate terminals:
 
 ```bash
 # Terminal 1
-pnpm meridian watch
+pnpm exec meridian watch
 
 # Terminal 2
-pnpm next dev
+pnpm exec next dev
 ```
 
 ---
 
-## meridian.config.ts
+## Configuration surface
 
-Place a `meridian.config.ts` file at the project root to configure default options. CLI flags override config file values.
+The public v1 CLI is flag-driven. Use `--cwd`, `--input-dir`, and `--out-dir` to control where Meridian reads and writes files.
 
-```ts
-// meridian.config.ts
-export default {
-  inputDir: 'src',
-  outDir: '.meridian/generated',
-  extensions: ['ts', 'tsx'],
-};
-```
-
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `inputDir` | `string` | `'src'` | Input directory. |
-| `outDir` | `string` | `'.meridian/generated'` | Output directory. |
-| `extensions` | `string[]` | `['ts', 'tsx']` | File extensions to process. |
+Meridian does not currently ship a documented `meridian.config.ts` format.
 
 ---
 
 ## Output behavior
 
-- Non-Meridian files (files that do not contain a class extending `Component` or `Primitive`) are copied to the output directory unchanged.
-- Meridian source files are compiled. The generated file replaces the source file in the output directory. The filename is preserved.
-- If a source file produces error-severity diagnostics, no output file is written for that file. Existing output from a previous successful build is left in place.
+- Meridian-authored TypeScript source files are compiled into generated React TSX.
+- Non-Meridian source files are ignored by the public v1 CLI. If a file stops being Meridian source, any previous generated output for that file is removed.
+- If a source file produces error-severity diagnostics, no output file is written for that file and any previous generated output for that file is removed.
 
 ---
 
@@ -156,10 +143,10 @@ In CI, run `meridian build` and check the exit code. A non-zero exit indicates c
 ```yaml
 # GitHub Actions example
 - name: Compile Meridian sources
-  run: pnpm meridian build
+  run: pnpm exec meridian build
 
 - name: Build Next.js application
-  run: pnpm next build
+  run: pnpm exec next build
 ```
 
 Because `predev` and `prebuild` run `meridian build` automatically, CI pipelines that call `pnpm build` will implicitly compile Meridian sources first.

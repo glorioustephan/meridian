@@ -9,7 +9,7 @@ title: '@effect'
 ## Import
 
 ```ts
-import { effect } from '@meridian/meridian';
+import { effect } from 'meridian';
 ```
 
 Use as `@effect` or `@effect.layout` in decorator position.
@@ -37,7 +37,7 @@ export declare const effect: {
 ```tsx
 'use client';
 
-import { Component, state, effect } from '@meridian/meridian';
+import { Component, state, effect } from 'meridian';
 
 export class PageTitle extends Component<{ title: string }> {
   @effect
@@ -187,7 +187,7 @@ Use `@effect.layout` for DOM measurements and mutations that must happen before 
 ```tsx
 'use client';
 
-import { Component, state, ref, effect } from '@meridian/meridian';
+import { Component, state, ref, effect } from 'meridian';
 
 export class Tooltip extends Component<{ text: string }> {
   @ref tooltipEl!: React.RefObject<HTMLDivElement>;

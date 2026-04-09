@@ -1,18 +1,42 @@
 {
   "name": "meridian",
-  "version": "0.0.0",
+  "version": "0.1.0-alpha.0",
+  "description": "Class-first authoring primitives for Meridian React components.",
   "type": "module",
+  "license": "MIT",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "exports": {
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
-    }
+    },
+    "./package.json": "./package.json"
+  },
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/glorioustephan/meridian.git",
+    "directory": "packages/meridian"
+  },
+  "homepage": "https://glorioustephan.github.io/meridian/",
+  "bugs": {
+    "url": "https://github.com/glorioustephan/meridian/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "tag": "alpha",
+    "provenance": true
   },
   "scripts": {
-    "build": "tsc --build",
-    "clean": "rm -rf dist"
+    "build": "pnpm clean && tsc --build",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",

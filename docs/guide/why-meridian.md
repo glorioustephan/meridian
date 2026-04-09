@@ -116,7 +116,7 @@ The hooks themselves are not wrong. The problem is that the author must manually
 ```tsx
 'use client';
 
-import { Component, Primitive, state, ref, effect, use } from '@meridian/meridian';
+import { Component, Primitive, state, ref, effect, use } from 'meridian';
 import { UseDebounce } from './UseDebounce';
 
 interface SearchPanelProps {

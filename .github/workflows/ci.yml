@@ -37,5 +37,8 @@ jobs:
       - name: Smoke test built compiler package
         run: pnpm smoke:compiler-dist
 
+      - name: Smoke test publishable tarballs
+        run: pnpm pack:smoke
+
       - name: Build Next.js App Router fixture
         run: pnpm build:fixture:next

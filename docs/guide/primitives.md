@@ -22,7 +22,7 @@ Here is a debounce Primitive that delays a value update by a configurable amount
 
 ```tsx
 // src/primitives/UseDebounce.ts
-import { Primitive, state, effect } from '@meridian/meridian';
+import { Primitive, state, effect } from 'meridian';
 
 export class UseDebounce<T> extends Primitive<T> {
   @state current: T;
@@ -91,7 +91,7 @@ Use the `@use` decorator in a `Component` to call the Primitive's hook:
 ```tsx
 'use client';
 
-import { Component, state, use } from '@meridian/meridian';
+import { Component, state, use } from 'meridian';
 import { UseDebounce } from '@meridian/primitives/UseDebounce';
 
 export class SearchPage extends Component {
@@ -198,7 +198,7 @@ A `Primitive` can use `@use` to compose other Primitives:
 
 ```tsx
 // src/primitives/UseSearch.ts
-import { Primitive, state, effect, use } from '@meridian/meridian';
+import { Primitive, state, effect, use } from 'meridian';
 import { UseDebounce } from './UseDebounce';
 
 interface SearchResult {

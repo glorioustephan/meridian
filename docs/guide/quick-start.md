@@ -16,7 +16,7 @@ Create the file `src/components/Counter.tsx`:
 // src/components/Counter.tsx
 'use client';
 
-import { Component, state, effect } from '@meridian/meridian';
+import { Component, state, effect } from 'meridian';
 
 interface CounterProps {
   initialCount?: number;
@@ -75,7 +75,7 @@ Key things to notice:
 ## Step 2: Run the compiler
 
 ```bash
-pnpm meridian build
+pnpm exec meridian build
 ```
 
 The compiler processes `src/components/Counter.tsx` and writes the generated output to `.meridian/generated/components/Counter.tsx`.
@@ -183,10 +183,10 @@ The `predev` script runs `meridian build` before `next dev` starts, so the gener
 
 ```bash
 # Terminal 1
-pnpm meridian watch
+pnpm exec meridian watch
 
 # Terminal 2
-pnpm next dev
+pnpm exec next dev
 ```
 
 ## Summary

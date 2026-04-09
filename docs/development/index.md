@@ -4,11 +4,9 @@ title: Development Plan
 
 # Development Plan
 
-This section breaks the remaining Meridian v1 work into execution documents that can be implemented independently without drifting from the root-level `rfc.md` and `implementation-plan.md`.
+This section tracks the execution records for the Meridian v1 implementation plan.
 
-The remaining work is:
-
-1. [Phase 9: v1 Hardening and Release Preparation](./phase-9-release.md)
+The original v1 roadmap is now complete.
 
 Recently completed:
 
@@ -16,12 +14,11 @@ Recently completed:
 2. [Phase 6 Completion: CLI Watch and Incremental Rebuilds](./phase-6-cli-watch.md)
 3. [Phase 7 Completion: Next.js Runtime Validation](./phase-7-next-runtime.md)
 4. [Phase 8 Completion: React Compiler Validation and Documentation](./phase-8-react-compiler.md)
+5. [Phase 9 Completion: v1 Hardening and Release Preparation](./phase-9-release.md)
 
 ## Ordering
 
-The recommended implementation order is:
-
-1. start release prep only after the earlier verification work is green
+The original implementation order is fully executed. Any new work should start from a new scoped plan.
 
 ## Working Rules
 

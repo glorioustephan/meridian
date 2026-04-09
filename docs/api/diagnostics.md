@@ -33,7 +33,7 @@ Every file that contains a Meridian `Component` class must have `'use client'` a
 
 ```tsx
 // src/components/Counter.tsx — missing 'use client'
-import { Component, state } from '@meridian/meridian';
+import { Component, state } from 'meridian';
 
 export class Counter extends Component {
   @state count = 0;
@@ -53,7 +53,7 @@ Add `'use client';` as the very first line:
 ```tsx
 'use client';
 
-import { Component, state } from '@meridian/meridian';
+import { Component, state } from 'meridian';
 
 export class Counter extends Component {
   @state count = 0;
@@ -80,7 +80,7 @@ A Meridian `Component` or `Primitive` may not extend another class that has deco
 ```tsx
 'use client';
 
-import { Component, state } from '@meridian/meridian';
+import { Component, state } from 'meridian';
 
 class Base extends Component {
   @state sharedValue = 0; // Decorated member on a base class
@@ -103,7 +103,7 @@ Extract the shared logic into a `Primitive<T>` and compose it with `@use`:
 ```tsx
 'use client';
 
-import { Component, Primitive, state, use } from '@meridian/meridian';
+import { Component, Primitive, state, use } from 'meridian';
 
 export class SharedLogic extends Primitive<number> {
   @state sharedValue = 0;
@@ -133,7 +133,7 @@ A decorator was applied to a class member that is not one of the supported Merid
 ```tsx
 'use client';
 
-import { Component } from '@meridian/meridian';
+import { Component } from 'meridian';
 
 export class MyComponent extends Component {
   @memo // Error: M003
@@ -165,7 +165,7 @@ The `ServerComponent` base class is not available in Meridian v1. Server-side re
 ### Offending code
 
 ```tsx
-import { ServerComponent } from '@meridian/meridian'; // Error: M004
+import { ServerComponent } from 'meridian'; // Error: M004
 
 export class ProductList extends ServerComponent {
   // ...
@@ -208,7 +208,7 @@ The `@raw` decorator is not available in Meridian v1. It is reserved for a futur
 ```tsx
 'use client';
 
-import { Component, raw } from '@meridian/meridian';
+import { Component, raw } from 'meridian';
 
 export class MyComponent extends Component {
   @raw // Error: M005
@@ -241,7 +241,7 @@ A class extending `Component<Props>` must implement a `render()` method that ret
 ```tsx
 'use client';
 
-import { Component, state } from '@meridian/meridian';
+import { Component, state } from 'meridian';
 
 export class Counter extends Component { // Error: M006
   @state count = 0;
@@ -262,7 +262,7 @@ Implement the `render()` method:
 ```tsx
 'use client';
 
-import { Component, state } from '@meridian/meridian';
+import { Component, state } from 'meridian';
 
 export class Counter extends Component {
   @state count = 0;
@@ -287,7 +287,7 @@ A class extending `Primitive<T>` must implement a `resolve()` method that return
 ### Offending code
 
 ```tsx
-import { Primitive, state } from '@meridian/meridian';
+import { Primitive, state } from 'meridian';
 
 export class UseCounter extends Primitive<number> { // Error: M007
   @state count = 0;
@@ -306,7 +306,7 @@ Add a resolve() method that returns a value of type T.
 Implement the `resolve()` method:
 
 ```tsx
-import { Primitive, state } from '@meridian/meridian';
+import { Primitive, state } from 'meridian';
 
 export class UseCounter extends Primitive<number> {
   @state count = 0;

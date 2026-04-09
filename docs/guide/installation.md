@@ -10,7 +10,7 @@ This guide covers adding Meridian to an existing TypeScript project. For a walkt
 
 | Requirement | Version |
 |---|---|
-| Node.js | 18 or later |
+| Node.js | 20 or later |
 | TypeScript | 5.x |
 | React | 19 |
 | pnpm | 8 or later (npm and yarn also work) |
@@ -22,21 +22,21 @@ Meridian targets **standard decorators** as defined in TypeScript 5.x and the TC
 Install the author-facing package as a production dependency and the compiler and CLI as development dependencies:
 
 ```bash
-pnpm add @meridian/meridian
+pnpm add meridian
 pnpm add -D @meridian/compiler @meridian/cli
 ```
 
 With npm:
 
 ```bash
-npm install @meridian/meridian
+npm install meridian
 npm install --save-dev @meridian/compiler @meridian/cli
 ```
 
 With yarn:
 
 ```bash
-yarn add @meridian/meridian
+yarn add meridian
 yarn add --dev @meridian/compiler @meridian/cli
 ```
 
@@ -97,24 +97,20 @@ For watch mode, use `meridian watch` in a separate terminal or with a concurrent
 }
 ```
 
-## Configure Meridian (optional)
+## Custom source and output directories
 
-By default, Meridian reads from `src/` and writes to `.meridian/generated/`. If your project uses different directories, create a `meridian.config.ts` at the project root:
+The public v1 CLI is flag-driven. If you need non-default directories, set them directly in your scripts with `--input-dir` and `--out-dir`:
 
-```ts
-// meridian.config.ts
-export default {
-  inputDir: 'src',
-  outDir: '.meridian/generated',
-  extensions: ['ts', 'tsx'],
-};
+```json
+{
+  "scripts": {
+    "predev": "meridian build --input-dir app/meridian --out-dir .generated/react",
+    "dev": "next dev",
+    "prebuild": "meridian build --input-dir app/meridian --out-dir .generated/react",
+    "build": "next build"
+  }
+}
 ```
-
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `inputDir` | `string` | `'src'` | Directory to scan for Meridian source files. |
-| `outDir` | `string` | `'.meridian/generated'` | Directory where generated React TSX files are written. |
-| `extensions` | `string[]` | `['ts', 'tsx']` | File extensions to process. |
 
 ## Add path aliases (Next.js)
 
@@ -169,7 +165,7 @@ Create a minimal Meridian source file to confirm the toolchain is working:
 // src/components/Hello.tsx
 'use client';
 
-import { Component, state } from '@meridian/meridian';
+import { Component, state } from 'meridian';
 
 export class Hello extends Component<{ name: string }> {
   @state clicked = false;
@@ -191,7 +187,7 @@ export class Hello extends Component<{ name: string }> {
 Run the compiler:
 
 ```bash
-pnpm meridian build
+pnpm exec meridian build
 ```
 
 You should see a generated file at `.meridian/generated/components/Hello.tsx`. If the compiler reports any errors, check that your `tsconfig.json` has `experimentalDecorators` set to `false` and that the `'use client'` directive is present at the top of the source file.
